@@ -27,3 +27,5 @@ GitHub 和 R2 只负责分发。设备身份、订阅、FRP 凭据、密码与�
 
 当前仓库暂不提供有效的安装命令；完成第二台设备验收后再发布。
 
+`scripts/bootstrap-oec.template.sh` 与 `scripts/prepare-oec-bootstrap.py` 是构建阶段源码，不是可直接运行的安装入口。模板中的版本、验签器哈希和公钥必须由已签名的软件包生成，并经新设备验收，才会发布为实际安装脚本。
+
