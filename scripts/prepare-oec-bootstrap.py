@@ -105,7 +105,8 @@ def prepare(args):
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".ty-bootstrap-", dir=output.parent) as temporary:
         stage = pathlib.Path(temporary)
-        (stage / "bootstrap-oec.sh").write_text(script, encoding="utf-8", newline="\n")
+        with (stage / "bootstrap-oec.sh").open("w", encoding="utf-8", newline="\n") as destination:
+            destination.write(script)
         shutil.copyfile(args.fetch, stage / FETCH_NAME)
         shutil.copyfile(args.public_key, stage / "release-public.pem")
         shutil.copyfile(args.bundle, stage / "release.json")
