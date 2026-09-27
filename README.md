@@ -4,12 +4,12 @@ TY Gateway 是面向 ARM64 单网口旁路由设备的管理与分流软件。�
 
 ## 当前状态
 
-`v0.8.1` 是给第二台全新 Armbian 设备重试的一键安装 Pilot，修复首启服务无法写入 `/etc/ty-gateway` 的问题。它尚未完成真机验收，不应自动部署到已有设备或用于生产环境。
+`v0.8.2` 是给第二台 Armbian 测试设备重试的一键安装 Pilot。它保留了首启写入修复，并允许在上次安装中断后复用完全一致、尚未启用的 DAE；独立安装或修改过的 DAE 不会被覆盖。它尚未完成真机验收，不应自动部署到已有设备或用于生产环境。
 
 测试设备联网并能访问 GitHub 时，可用以下命令启动安装：
 
 ```bash
-curl -fsSL https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.1/bootstrap-oec.sh | sudo bash
+curl -fsSL https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.2/bootstrap-oec.sh | sudo bash
 ```
 
 安装器会校验签名软件包；安装前不会启用 DHCP、局域网 DNS 或 DAE 代理。Armbian 的 apt 源仍需可访问。

@@ -42,8 +42,20 @@ ip -4 route show default | grep -q . || { echo 'No IPv4 default route; connect t
 [[ ! -e /usr/local/bin/ty-gateway-agent && ! -e /var/lib/ty-gateway/credentials.json ]] || {
   echo 'TY Gateway is already installed; use the signed software updater.' >&2; exit 2;
 }
+# A previous bootstrap may have installed the pinned DAE files before its TY
+# Gateway overlay failed. Defer the decision until the signed package and the
+# official DAE package have been checked; never overwrite an unrelated DAE.
+existing_dae=0
 if command -v dae >/dev/null 2>&1 || [[ -e /usr/bin/dae || -e /usr/lib/systemd/system/dae.service || -e /lib/systemd/system/dae.service ]]; then
-  echo 'A DAE installation already exists; bootstrap will not replace it.' >&2; exit 2
+  existing_dae=1
+fi
+if (( existing_dae )) && {
+  [[ ! -f /etc/dae/config.dae || -L /etc/dae/config.dae || ! -f /etc/dae/ty-gateway/managed.dae || -L /etc/dae/ty-gateway/managed.dae ]] ||
+  ! grep -Fxq '# Managed by TY Gateway. Initial policy is direct.' /etc/dae/ty-gateway/managed.dae ||
+  systemctl is-active --quiet dae || systemctl is-enabled --quiet dae
+}; then
+  echo 'An unrelated or active DAE installation is present; bootstrap will not modify it.' >&2
+  exit 2
 fi
 
 kernel_version="$(uname -r)"
@@ -187,36 +199,56 @@ dae_unit="$work_dir/dae/usr/lib/systemd/system/dae.service"
   echo 'Pinned DAE package is missing required runtime files.' >&2; exit 2;
 }
 
-install -D -o root -g root -m 0755 "$dae_source" /usr/bin/dae
-install -D -o root -g root -m 0644 "$dae_unit" /usr/lib/systemd/system/dae.service
-install -D -o root -g root -m 0644 "$work_dir/dae/usr/share/dae/geoip.dat" /usr/share/dae/geoip.dat
-install -D -o root -g root -m 0644 "$work_dir/dae/usr/share/dae/geosite.dat" /usr/share/dae/geosite.dat
-install -d -o root -g root -m 0755 /etc/dae/ty-gateway
-if [[ ! -e /etc/dae/config.dae ]]; then
-  cat > /etc/dae/config.dae <<'DAE_CONFIG'
+cat > "$work_dir/initial-config.dae" <<'DAE_CONFIG'
 include {
   /etc/dae/ty-gateway/managed.dae
 }
 DAE_CONFIG
-  chown root:root /etc/dae/config.dae
-  chmod 0600 /etc/dae/config.dae
-fi
-if [[ ! -e /etc/dae/ty-gateway/managed.dae ]]; then
-  cat > /etc/dae/ty-gateway/managed.dae <<'DAE_MANAGED'
+cat > "$work_dir/initial-managed.dae" <<'DAE_MANAGED'
 # Managed by TY Gateway. Initial policy is direct.
 routing {
   dip(geoip:private, 224.0.0.0/3, 'ff00::/8') -> direct
   fallback: direct
 }
 DAE_MANAGED
-  chown root:root /etc/dae/ty-gateway/managed.dae
-  chmod 0600 /etc/dae/ty-gateway/managed.dae
-fi
-systemctl daemon-reload
-systemctl disable dae >/dev/null 2>&1 || true
-if systemctl is-active --quiet dae; then
-  echo 'DAE unexpectedly became active during installation; stopping it to preserve the default-off proxy state.' >&2
-  systemctl stop dae
+
+if (( existing_dae )); then
+  # Only reuse the exact files and default-off configuration written by the
+  # interrupted bootstrap. Any modification or active service is left alone.
+  dae_command="$(command -v dae 2>/dev/null || true)"
+  if [[ "$dae_command" != /usr/bin/dae ]] ||
+     [[ ! -f /usr/bin/dae || -L /usr/bin/dae || ! -f /usr/lib/systemd/system/dae.service || -L /usr/lib/systemd/system/dae.service ]] ||
+     [[ ! -f /usr/share/dae/geoip.dat || -L /usr/share/dae/geoip.dat || ! -f /usr/share/dae/geosite.dat || -L /usr/share/dae/geosite.dat ]] ||
+     [[ ! -f /etc/dae/config.dae || -L /etc/dae/config.dae || ! -f /etc/dae/ty-gateway/managed.dae || -L /etc/dae/ty-gateway/managed.dae ]] ||
+     ! cmp -s -- /usr/bin/dae "$dae_source" ||
+     ! cmp -s -- /usr/lib/systemd/system/dae.service "$dae_unit" ||
+     ! cmp -s -- /usr/share/dae/geoip.dat "$work_dir/dae/usr/share/dae/geoip.dat" ||
+     ! cmp -s -- /usr/share/dae/geosite.dat "$work_dir/dae/usr/share/dae/geosite.dat" ||
+     ! cmp -s -- /etc/dae/config.dae "$work_dir/initial-config.dae" ||
+     ! cmp -s -- /etc/dae/ty-gateway/managed.dae "$work_dir/initial-managed.dae" ||
+     systemctl is-active --quiet dae || systemctl is-enabled --quiet dae; then
+    echo 'DAE is already installed but does not match an inactive, unchanged TY Gateway bootstrap. No DAE files were replaced.' >&2
+    exit 2
+  fi
+  echo 'Reusing unchanged DAE files from the interrupted TY Gateway bootstrap.'
+else
+  install -D -o root -g root -m 0755 "$dae_source" /usr/bin/dae
+  install -D -o root -g root -m 0644 "$dae_unit" /usr/lib/systemd/system/dae.service
+  install -D -o root -g root -m 0644 "$work_dir/dae/usr/share/dae/geoip.dat" /usr/share/dae/geoip.dat
+  install -D -o root -g root -m 0644 "$work_dir/dae/usr/share/dae/geosite.dat" /usr/share/dae/geosite.dat
+  install -d -o root -g root -m 0755 /etc/dae/ty-gateway
+  if [[ ! -e /etc/dae/config.dae ]]; then
+    install -D -o root -g root -m 0600 "$work_dir/initial-config.dae" /etc/dae/config.dae
+  fi
+  if [[ ! -e /etc/dae/ty-gateway/managed.dae ]]; then
+    install -D -o root -g root -m 0600 "$work_dir/initial-managed.dae" /etc/dae/ty-gateway/managed.dae
+  fi
+  systemctl daemon-reload
+  systemctl disable dae >/dev/null 2>&1 || true
+  if systemctl is-active --quiet dae; then
+    echo 'DAE unexpectedly became active during installation; stopping it to preserve the default-off proxy state.' >&2
+    systemctl stop dae
+  fi
 fi
 
 echo "Installing signed TY Gateway $release_version ($channel) and DAE $dae_version."
