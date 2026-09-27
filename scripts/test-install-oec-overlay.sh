@@ -163,6 +163,10 @@ run_installer() {
   ( PATH="$fakebin:$PATH" TY_OVERLAY_TEST_MODE=1 TY_OVERLAY_TEST_ROOT="$install_root" TY_OVERLAY_TEST_BIN="$fakebin" \
     bash "$package/install-oec-overlay.sh" )
 }
+run_installer_repair() {
+  ( PATH="$fakebin:$PATH" TY_OVERLAY_TEST_MODE=1 TY_OVERLAY_TEST_ROOT="$install_root" TY_OVERLAY_TEST_BIN="$fakebin" \
+    TY_OVERLAY_REPAIR_INITIAL_INSTALL=1 bash "$package/install-oec-overlay.sh" )
+}
 run_installer_preserve_agent() {
   ( PATH="$fakebin:$PATH" TY_OVERLAY_TEST_MODE=1 TY_OVERLAY_TEST_ROOT="$install_root" TY_OVERLAY_TEST_BIN="$fakebin" \
     TY_OVERLAY_PRESERVE_AGENT_PROCESS=1 bash "$package/install-oec-overlay.sh" )
@@ -196,6 +200,24 @@ run_installer >/dev/null
 assert_eq "$(state_of ty-frpc-rescue.service)" "loaded disabled inactive" "repeat install FRPC state"
 assert_eq "$(state_of ty-gateway-local.service)" "loaded enabled active" "repeat install local manager state"
 assert_no_frpc_mutation
+
+# An interrupted first install can have unit files but no enable/start action.
+# Bootstrap explicitly requests reconciliation; ordinary upgrades do not.
+new_fixture interrupted-first-install
+for unit in ty-gateway-firstboot ty-gateway-agent ty-gateway-local ty-gateway-network ty-gateway-dae-helper ty-gateway-update-recover ty-gateway-update-service; do
+  set_state "$unit.service" "loaded disabled inactive"
+done
+set_state ty-frpc-rescue.service "loaded disabled inactive"
+run_installer_repair >/dev/null
+for unit in ty-gateway-firstboot ty-gateway-agent ty-gateway-local ty-gateway-network ty-gateway-dae-helper ty-gateway-update-service; do
+  assert_eq "$(state_of "$unit.service")" "loaded enabled active" "repaired $unit state"
+done
+assert_eq "$(state_of ty-gateway-update-recover.service)" "loaded enabled inactive" "repaired update recovery state"
+assert_no_frpc_mutation
+run_installer_repair >/dev/null
+if grep -E '^restart .*ty-gateway-(firstboot|agent|local|network|dae-helper|update-service)\.service' "$install_root/.systemctl.log" >/dev/null; then
+  fail "repair restarted a service that was already running"
+fi
 
 # A successful update retains a private snapshot. Restoring it only reverts
 # package software and service states; device configuration and rescue access

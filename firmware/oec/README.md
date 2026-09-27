@@ -40,6 +40,8 @@ OEC 专用底包（原样刷入） → 实机验收启动、DHCP、SSH、重启 
 
 首次安装时按默认策略启用本地管理、dae 辅助器、firstboot 和 Agent。Agent 会在首次联网时尝试以设备有线 MAC 认领后台预登记的 MAC；后台未登记或网络不可用时会重试，但不会因此启用 DHCP、DNS 或 dae 代理。该 MAC 首次认领存在可被仿冒/抢先认领的风险，因此仅适合受控小范围试点，详见 `docs/DEVICE-ACTIVATION.md`。新流程需要 Cloud 端应用迁移 `006`、`007` 并部署匹配版本；目前源码/测试已准备，但不能据此推断生产 Cloud 或设备已升级。升级时保留现有服务的启用、停止和屏蔽状态；可用 `TY_OVERLAY_PRESERVE_AGENT_PROCESS=1` 安装新文件而不重启正在运行的 Agent，之后经运维人员确认再手动重启。旧 FRPC 服务不会被安装器启用、禁用、启动、停止或重启；现有隧道会继续运行，旧配置保持原样。每设备自动 FRP 由 Agent 按 Cloud 认证配置管理为独立子进程，只有单独 FRPS listener/插件与 Cloud 配置齐备并启用后才会启动，不使用或覆盖旧 `22000` 救援隧道。若旧 FRPC 服务已被屏蔽，安装器保留屏蔽状态和单元文件。现有 `agent.env`、本地管理 `local.env`、设备凭据和真实 FRPC 配置会保留，已有文件权限不会被安装器改写；新建的 `local.env` 限定为 root 与 `tylocal` 组可读。
 
+一键安装使用 root 专有的 `/var/lib/ty-gateway-bootstrap/state` 区分“安装中”和“已完成”，并对并发运行加锁。中断后重跑同一受信脚本会再次校验签名与哈希，对固定路径的软件文件补齐或重新写入，保留设备凭据、用户设置和订阅状态；账户创建及服务启用是幂等操作。只有首次安装的续装模式会补启因断电而留下的已存在但未启动的核心服务；普通升级仍保留既有启停状态。已完成的首装重跑不会重复创建实例或重置配置。DAE、DHCP、局域网 DNS 依旧按用户开关控制，不因“管理服务开机自启”而自动开启。旧版中断但尚无 Agent 的设备，只在 DAE 二进制、单元、数据及默认关闭配置均与固定版本一致时允许续装。
+
 首次设置本地管理密码时至少 12 个字符；设备码只作身份标识，不是登录口令。服务默认在 `http://<OEC-LAN-IP>:8088` 提供页面；`feiliu.local` 需要目标镜像的 mDNS 解析经验证后再作为正式入口。普通用户侧不显示订阅 URL、邮箱、管理备注或节点服务器凭据。当前页面可显示设备码与本机 LAN 地址、设置/修改本地密码；恢复挑战端到端需配置并验证与云端匹配的公钥。DHCP、DNS 和 IP/MAC 保留可通过“保存并应用配置”实际执行；端口转发尚未实现。启用 DHCP 前必须关闭主路由 DHCP。
 
 本地管理程序以单独的低权限 `tylocal` 用户运行，密码摘要保存在 `/var/lib/ty-gateway-local`，不与 Agent 的设备凭据目录共享。`TY_LOCAL_INTERFACE` 应与 Agent 绑定的 LAN 接口一致。网页可校验并保存单网口网络预设及最多 256 条 MAC/IP 绑定。保存配置后可明确确认只应用 OEC 自身的固定 IPv4 地址和上游网关；自动检测局域网 ARP 冲突，使用 NetworkManager 临时连接和独立回滚检查点切换，用户须从新地址重新登录确认，180 秒未确认则 NetworkManager 自动恢复。旧 DHCP 连接配置不会被删除；失败时 helper 也会尝试恢复原连接。“仅应用管理地址”不会启用 LAN 服务；DHCP、LAN DNS 与 MAC/IP 固定分配使用独立的“保存并应用配置”，实际操作见 `docs/OEC-LAN-SERVICES.md`。端口转发和 dae 不随这些操作启用。地址须排除在主路由 DHCP 地址池外；随机 MAC 仍可能使终端绑定失效。
@@ -56,7 +58,7 @@ Agent 通过单独的 `typroxy` 组 Unix socket 向本地管理程序提供窄�
 
 dae 辅助器以 root 运行，但只接受受限 Unix socket 上的订阅配置请求，不执行任意 shell；它将订阅响应暂存为 `/etc/dae/ty-gateway/subscription.raw`（权限 0600），向 dae 添加单独的托管配置 include，先运行 `dae validate` 再 reload。失败时恢复 dae 配置和上一份订阅。URL 和响应正文不会写入 Agent 状态文件或日志。overlay 安装器不会改写 `/boot`、Loader、DTB 或现有网卡配置。手动安装 overlay 前需准备 `dnsmasq-base`、`python3-dbus`、NetworkManager 和官方 dae；新设备应使用生成的 `bootstrap-oec.sh`，它自动安装缺失的 apt 运行依赖、校验并安装固定版本的官方 DAE，再安装签名 overlay。它不会运行 DAE Debian 包的 post-install 脚本，也不会启用 DAE、DHCP 或局域网 DNS。首次安装的 Agent 会按 `TY_AGENT_AUTO_ENROLL` 自动尝试 MAC allowlist 认领；升级保留已有 credentials。通用包不携带上海 FRPS 全局 token、roster token、设备 secret 或激活文件。每设备 FRP 源码使用独立 control listener、端口池、TLS CA 和设备/端口派生凭据；Cloud 开关默认关闭，只有完成独立 FRPS/plugin 部署并配置 `TY_FRP_AUTO_ENABLED=1` 后才可能下发。当前版本尚未部署到 Cloud、FRPS 或 OEC。
 
-绑定 LAN 的 dae 要求接口的 IPv6 forwarding 为 1。NetworkManager 1.36 在重新接管网卡时可能将该接口参数重置为 0，即使 `/etc/sysctl.d` 已设置为 1。本包在 NetworkManager 的网卡上线、重新应用和 DHCP 变化事件后重新设置托管 LAN 接口的 forwarding，并在 dae 启动及重载前再次确认。只处理 dae 托管配置指定的接口，不会更改网卡地址或启动 DHCP/DNS；不要只依赖开机执行一次的 sysctl 设置。
+绑定 LAN 的 dae 要求接口的 IPv6 forwarding 为 1；`0` 表示该接口未开启 IPv6 转发，不等同于“DAE 已关闭”的完整状态。旧版 NetworkManager 在重新接管网卡时可能将该接口参数重置为 0，即使 `/etc/sysctl.d` 已设置为 1。dae 启动前检查会在支持 `ipv6.forwarding` 的 NetworkManager 上，把**当前托管 LAN 连接的配置**持久设为 `yes`，不重新激活连接；旧版本或设置失败则依靠运行时写入。NetworkManager 网卡上线、重新应用和 DHCP 变化后也会触发检查。用户关闭代理时不会为了改写 sysctl 而启动 DAE；已经写入的连接属性不随代理开关复位。用户开启代理并保存后，Agent 会保存开关状态、启用 dae 开机服务，并在重启时恢复已验证的策略。只处理 dae 托管配置指定的接口，不会更改网卡地址或启动 DHCP/DNS；不要只依赖开机执行一次的 sysctl 设置。
 
 若是新装 overlay，Agent 会在首次联网后自动注册；若是旧包或关闭了自动注册，则仍可在 OEC 本地串口或 SSH 控制台手动执行：
 

@@ -181,6 +181,10 @@ fi
 # Capture unit states before replacing unit files. Existing service enablement
 # is user state: upgrades may refresh active services, but never enable, disable,
 # start, or stop a previously installed unit just because it is in this bundle.
+repair_initial_install="${TY_OVERLAY_REPAIR_INITIAL_INSTALL:-0}"
+[[ "$repair_initial_install" == 0 || "$repair_initial_install" == 1 ]] || {
+  echo "TY_OVERLAY_REPAIR_INITIAL_INSTALL must be 0 or 1" >&2; exit 2;
+}
 units=(
   ty-gateway-firstboot.service
   ty-gateway-dae-helper.service
@@ -521,6 +525,22 @@ systemctl daemon-reload
 
 activate_managed_unit() {
   local unit="$1" should_start="$2" should_restart="$3"
+  if [[ "$repair_initial_install" == 1 ]]; then
+    [[ "${unit_masked[$unit]}" != 1 ]] || {
+      echo "Cannot complete first installation while $unit is masked" >&2
+      return 1
+    }
+    # A power loss can leave a unit file installed but not enabled or started.
+    # Reconcile the first-install defaults without restarting an active service.
+    if [[ "${unit_enabled[$unit]}" != enabled ]]; then
+      systemctl enable "$unit" >/dev/null
+    fi
+    if [[ "$should_start" == yes && "${unit_active[$unit]}" != active ]]; then
+      unit_touched["$unit"]=1
+      systemctl start "$unit"
+    fi
+    return 0
+  fi
   [[ "${unit_masked[$unit]}" != 1 ]] || return 0
   if [[ "${unit_new[$unit]}" == 1 ]]; then
     systemctl enable "$unit" >/dev/null
@@ -548,7 +568,7 @@ activate_managed_unit ty-gateway-firstboot.service yes no
 activate_managed_unit ty-gateway-update-recover.service no no
 activate_managed_unit ty-gateway-update-service.service yes yes
 credentials="$(target /var/lib/ty-gateway/credentials.json)"
-if [[ -f "$credentials" || "${unit_new[ty-gateway-agent.service]}" == 1 ]]; then
+if [[ "$repair_initial_install" == 1 || -f "$credentials" || "${unit_new[ty-gateway-agent.service]}" == 1 ]]; then
   activate_managed_unit ty-gateway-agent.service yes yes
 fi
 if [[ -n "$activation_source" && "${unit_new[ty-gateway-agent.service]}" != 1 && "${unit_masked[ty-gateway-agent.service]}" != 1 && "${unit_active[ty-gateway-agent.service]}" != active ]]; then

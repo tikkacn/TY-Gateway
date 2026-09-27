@@ -2,6 +2,7 @@
 # Generated only by prepare-oec-bootstrap.py. Intended for a fresh Debian-based
 # ARM64 Armbian device. Existing installs must use the signed updater.
 set -Eeuo pipefail
+umask 077
 
 release_version='@RELEASE_VERSION@'
 channel='@RELEASE_CHANNEL@'
@@ -37,10 +38,48 @@ done
   echo 'This installer supports Debian/Ubuntu based Armbian only.' >&2; exit 2;
 }
 command -v ip >/dev/null 2>&1 || { echo 'iproute2 is required by Armbian.' >&2; exit 2; }
+command -v flock >/dev/null 2>&1 || { echo 'flock is required to prevent concurrent installations.' >&2; exit 2; }
 nmcli -t -f RUNNING general status | grep -qx running || { echo 'NetworkManager is not running; fix the base network before installing.' >&2; exit 2; }
 ip -4 route show default | grep -q . || { echo 'No IPv4 default route; connect the OEC to the existing router first.' >&2; exit 2; }
-[[ ! -e /usr/local/bin/ty-gateway-agent && ! -e /var/lib/ty-gateway/credentials.json ]] || {
-  echo 'TY Gateway is already installed; use the signed software updater.' >&2; exit 2;
+exec 9>/run/ty-gateway-bootstrap.lock
+flock -n 9 || { echo 'Another TY Gateway installation is running.' >&2; exit 2; }
+
+bootstrap_state_dir=/var/lib/ty-gateway-bootstrap
+bootstrap_state_file="$bootstrap_state_dir/state"
+if [[ -e "$bootstrap_state_dir" || -L "$bootstrap_state_dir" ]]; then
+  [[ -d "$bootstrap_state_dir" && ! -L "$bootstrap_state_dir" ]] || {
+    echo 'Bootstrap state directory is unsafe.' >&2; exit 2;
+  }
+fi
+bootstrap_state=''
+if [[ -e "$bootstrap_state_file" || -L "$bootstrap_state_file" ]]; then
+  [[ -f "$bootstrap_state_file" && ! -L "$bootstrap_state_file" && "$(stat -c %u "$bootstrap_state_file")" == 0 ]] || {
+    echo 'Bootstrap state file is unsafe.' >&2; exit 2;
+  }
+  bootstrap_state="$(<"$bootstrap_state_file")"
+  [[ "$bootstrap_state" == in-progress || "$bootstrap_state" == complete ]] || {
+    echo 'Bootstrap state is invalid; no installation changes were made.' >&2; exit 2;
+  }
+fi
+if [[ "$bootstrap_state" == complete ]]; then
+  [[ -x /usr/local/bin/ty-gateway-agent ]] || {
+    echo 'Bootstrap was marked complete but its Agent is missing; use the signed software repair process.' >&2; exit 2;
+  }
+  echo 'TY Gateway first installation already completed; no files or services were changed.'
+  exit 0
+fi
+if [[ -z "$bootstrap_state" ]] && { [[ -e /usr/local/bin/ty-gateway-agent ]] || [[ -e /var/lib/ty-gateway/credentials.json ]]; }; then
+  echo 'An older TY Gateway installation exists; use the signed software updater, not first-install bootstrap.' >&2
+  exit 2
+fi
+mark_bootstrap_state() {
+  local next_state="$1" temporary
+  install -d -o root -g root -m 0700 "$bootstrap_state_dir"
+  temporary="$(mktemp "$bootstrap_state_dir/.state.XXXXXXXX")"
+  printf '%s\n' "$next_state" > "$temporary"
+  chmod 0600 "$temporary"
+  mv -f -- "$temporary" "$bootstrap_state_file"
+  bootstrap_state="$next_state"
 }
 # A previous bootstrap may have installed the pinned DAE files before its TY
 # Gateway overlay failed. Defer the decision until the signed package and the
@@ -49,13 +88,24 @@ existing_dae=0
 if command -v dae >/dev/null 2>&1 || [[ -e /usr/bin/dae || -e /usr/lib/systemd/system/dae.service || -e /lib/systemd/system/dae.service ]]; then
   existing_dae=1
 fi
-if (( existing_dae )) && {
+legacy_retry=0
+if [[ -z "$bootstrap_state" ]] && (( existing_dae )); then
+  legacy_retry=1
+fi
+if (( legacy_retry )) && {
   [[ ! -f /etc/dae/config.dae || -L /etc/dae/config.dae || ! -f /etc/dae/ty-gateway/managed.dae || -L /etc/dae/ty-gateway/managed.dae ]] ||
   ! grep -Fxq '# Managed by TY Gateway. Initial policy is direct.' /etc/dae/ty-gateway/managed.dae ||
   systemctl is-active --quiet dae || systemctl is-enabled --quiet dae
 }; then
   echo 'An unrelated or active DAE installation is present; bootstrap will not modify it.' >&2
   exit 2
+fi
+if [[ "$bootstrap_state" == in-progress ]] && systemctl is-active --quiet dae; then
+  echo 'DAE is active during an incomplete first installation; refusing to replace a running proxy.' >&2
+  exit 2
+fi
+if [[ -z "$bootstrap_state" ]] && (( ! legacy_retry )); then
+  mark_bootstrap_state in-progress
 fi
 
 kernel_version="$(uname -r)"
@@ -212,7 +262,39 @@ routing {
 }
 DAE_MANAGED
 
-if (( existing_dae )); then
+dae_command="$(command -v dae 2>/dev/null || true)"
+if (( existing_dae )) && [[ -n "$dae_command" && "$dae_command" != /usr/bin/dae ]]; then
+  echo 'DAE resolves outside /usr/bin/dae; bootstrap will not replace it.' >&2
+  exit 2
+fi
+
+if [[ "$bootstrap_state" == in-progress ]] && (( existing_dae )); then
+  # A marker alone must not authorize overwriting an independently installed
+  # or subsequently changed DAE. Partial writes are fine, but each existing
+  # file has to match the pinned release or our initial default-off policy.
+  for pair in \
+    "/usr/bin/dae:$dae_source" \
+    "/usr/lib/systemd/system/dae.service:$dae_unit" \
+    "/usr/share/dae/geoip.dat:$work_dir/dae/usr/share/dae/geoip.dat" \
+    "/usr/share/dae/geosite.dat:$work_dir/dae/usr/share/dae/geosite.dat" \
+    "/etc/dae/config.dae:$work_dir/initial-config.dae" \
+    "/etc/dae/ty-gateway/managed.dae:$work_dir/initial-managed.dae"; do
+    destination="${pair%%:*}"
+    expected="${pair#*:}"
+    if [[ -e "$destination" || -L "$destination" ]] &&
+       { [[ ! -f "$destination" || -L "$destination" ]] || ! cmp -s -- "$destination" "$expected"; }; then
+      echo "Interrupted installation has a changed DAE file: $destination; no DAE files were replaced." >&2
+      exit 2
+    fi
+  done
+  if [[ -e /lib/systemd/system/dae.service && ! -e /usr/lib/systemd/system/dae.service ]] ||
+     systemctl is-enabled --quiet dae; then
+    echo 'A different or enabled DAE service exists; no DAE files were replaced.' >&2
+    exit 2
+  fi
+fi
+
+if (( legacy_retry )); then
   # Only reuse the exact files and default-off configuration written by the
   # interrupted bootstrap. Any modification or active service is left alone.
   dae_command="$(command -v dae 2>/dev/null || true)"
@@ -231,6 +313,7 @@ if (( existing_dae )); then
     exit 2
   fi
   echo 'Reusing unchanged DAE files from the interrupted TY Gateway bootstrap.'
+  mark_bootstrap_state in-progress
 else
   install -D -o root -g root -m 0755 "$dae_source" /usr/bin/dae
   install -D -o root -g root -m 0644 "$dae_unit" /usr/lib/systemd/system/dae.service
@@ -244,15 +327,37 @@ else
     install -D -o root -g root -m 0600 "$work_dir/initial-managed.dae" /etc/dae/ty-gateway/managed.dae
   fi
   systemctl daemon-reload
-  systemctl disable dae >/dev/null 2>&1 || true
   if systemctl is-active --quiet dae; then
-    echo 'DAE unexpectedly became active during installation; stopping it to preserve the default-off proxy state.' >&2
-    systemctl stop dae
+    echo 'DAE became active during first installation; refusing to stop a running proxy.' >&2
+    exit 2
   fi
+  systemctl disable dae >/dev/null 2>&1 || true
 fi
 
 echo "Installing signed TY Gateway $release_version ($channel) and DAE $dae_version."
-/bin/bash "$staged/install-oec-overlay.sh"
+TY_OVERLAY_REPAIR_INITIAL_INSTALL=1 /bin/bash "$staged/install-oec-overlay.sh"
+
+# Keep the marker in-progress if the installation stopped before every
+# required service was available. A later invocation will reapply the signed
+# files and reconcile only the first-install service defaults.
+[[ -x /usr/local/bin/ty-gateway-agent && -x /usr/local/bin/ty-gateway-local && -f /var/lib/ty-gateway/.initialized ]] || {
+  echo 'TY Gateway files or firstboot initialization are incomplete; retry the same bootstrap.' >&2; exit 2;
+}
+for required_unit in ty-gateway-firstboot.service ty-gateway-dae-helper.service ty-gateway-agent.service ty-gateway-local.service ty-gateway-network.service ty-gateway-update-recover.service ty-gateway-update-service.service; do
+  systemctl is-enabled --quiet "$required_unit" || {
+    echo "Required service is not enabled: $required_unit; retry the same bootstrap." >&2; exit 2;
+  }
+done
+for required_unit in ty-gateway-dae-helper.service ty-gateway-agent.service ty-gateway-local.service ty-gateway-network.service ty-gateway-update-service.service; do
+  systemctl is-active --quiet "$required_unit" || {
+    echo "Required service is not running: $required_unit; retry the same bootstrap." >&2; exit 2;
+  }
+done
+if systemctl is-active --quiet dae || systemctl is-enabled --quiet dae; then
+  echo 'DAE proxy was unexpectedly enabled during installation; inspect it before retrying.' >&2
+  exit 2
+fi
+mark_bootstrap_state complete
 
 echo 'Installation completed. DHCP, LAN DNS, and DAE proxy routing remain off by default.'
 if [[ -z "$kernel_config" ]]; then

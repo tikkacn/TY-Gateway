@@ -11,6 +11,21 @@ interface="$(awk '$1 == "lan_interface:" { print $2; exit }' "$managed")"
 [[ $# -eq 0 || "$1" == "$interface" ]] || exit 0
 [[ -e "/sys/class/net/$interface" ]] || exit 1
 
+# Newer NetworkManager versions can own this sysctl in the active connection
+# profile. Persist only for the interface dae actually manages. Modifying the
+# saved profile does not reactivate it or change the live management address;
+# the sysctl writes below cover the current activation and older NM versions.
+if command -v nmcli >/dev/null 2>&1; then
+  connection_uuid="$(nmcli -g GENERAL.CON-UUID device show "$interface" 2>/dev/null || true)"
+  if [[ "$connection_uuid" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] &&
+     configured_forwarding="$(nmcli -g ipv6.forwarding connection show uuid "$connection_uuid" 2>/dev/null)"; then
+    if [[ "$configured_forwarding" != yes && "$configured_forwarding" != 1 ]]; then
+      nmcli connection modify uuid "$connection_uuid" ipv6.forwarding yes >/dev/null ||
+        echo 'Could not persist IPv6 forwarding in the NetworkManager connection; keeping the runtime fallback.' >&2
+    fi
+  fi
+fi
+
 /usr/sbin/sysctl -w net.ipv4.ip_forward=1 >/dev/null
 /usr/sbin/sysctl -w "net.ipv6.conf.${interface}.accept_ra=2" >/dev/null
 /usr/sbin/sysctl -w "net.ipv6.conf.${interface}.forwarding=1" >/dev/null
