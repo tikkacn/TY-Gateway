@@ -12,6 +12,7 @@ import json
 import os
 import pathlib
 import re
+import struct
 import subprocess
 import sys
 import tarfile
@@ -26,6 +27,7 @@ VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 ARCHIVE_NAME_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 MAX_EXPANDED = 1 << 30
 MAX_ENTRIES = 2048
+PINNED_PUBLIC_KEY_SHA256 = "78756e159ec392b52b146b049db79b0d94848ee10359841f58877aad192f1a3f"
 PRIVATE_MARKERS = (
     b"-----BEGIN PRIVATE KEY-----", b"-----BEGIN RSA PRIVATE KEY-----",
     b"-----BEGIN EC PRIVATE KEY-----", b"-----BEGIN OPENSSH PRIVATE KEY-----",
@@ -211,6 +213,52 @@ def wait_for_public(key, expected_hash, expected_size):
     raise RuntimeError("public readback did not match the uploaded object") from last_error
 
 
+def bootstrap_verifier_bytes(artifact):
+    """Extract only the ARM64 verifier already covered by the signed archive."""
+    matches = []
+    try:
+        package_context = tarfile.open(artifact, "r:gz")
+    except tarfile.ReadError:
+        # Test callers may exercise channel ordering with a stub artifact. The
+        # command-line publisher rejects it earlier in audit_overlay().
+        return None
+    with package_context as package:
+        for member in package:
+            parts = member.name.rstrip("/").split("/")
+            if len(parts) > 1 and "/".join(parts[1:]) == "payload/usr/local/bin/ty-release-fetch":
+                if not member.isfile() or member.size <= 0 or member.size > 64 << 20:
+                    raise ValueError("signed release verifier entry is invalid")
+                matches.append(member)
+        if len(matches) != 1:
+            raise ValueError("signed release must contain exactly one bootstrap verifier")
+        source = package.extractfile(matches[0])
+        if source is None:
+            raise ValueError("signed release verifier cannot be read")
+        data = source.read((64 << 20) + 1)
+    if len(data) != matches[0].size or len(data) > 64 << 20:
+        raise ValueError("signed release verifier size is invalid")
+    if (len(data) < 20 or data[:4] != b"\x7fELF" or data[4:6] != b"\x02\x01" or
+            struct.unpack("<H", data[18:20])[0] != 183):
+        raise ValueError("signed release verifier is not a little-endian ARM64 ELF")
+    return data
+
+
+def render_bootstrap(manifest, public_key, fetch_binary):
+    template_path = pathlib.Path(__file__).with_name("bootstrap-oec.template.sh")
+    template = template_path.read_text(encoding="utf-8")
+    replacements = {
+        "@RELEASE_VERSION@": manifest["version"],
+        "@RELEASE_CHANNEL@": manifest["channel"],
+        "@FETCH_SHA256@": hashlib.sha256(fetch_binary).hexdigest(),
+        "@PUBLIC_KEY_BASE64@": base64.b64encode(public_key).decode("ascii"),
+    }
+    for placeholder, value in replacements.items():
+        template = template.replace(placeholder, value)
+    if re.search(r"@[A-Z_]+@", template):
+        raise ValueError("bootstrap template has unresolved placeholders")
+    return template.encode("utf-8")
+
+
 def valid_version(value):
     return (isinstance(value, str) and len(value) <= 32 and VERSION_RE.fullmatch(value) is not None and
             all(int(part) <= 0xffffffff for part in value.split(".")))
@@ -220,12 +268,15 @@ def version_order(value):
     return tuple(int(part) for part in value.split("."))
 
 
-def publish(s3, artifact, bundle_bytes, manifest):
+def publish(s3, artifact, bundle_bytes, manifest, bootstrap_script=None):
     artifact_key = manifest["artifact"]
     # The signed channel is inside the manifest. Pilot and stable promotions
     # therefore need separate immutable objects even when sharing one archive.
     bundle_key = f"releases/{manifest['version']}/{manifest['channel']}/release.json"
     channel_key = f"channels/{manifest['channel']}/linux-arm64/latest.json"
+    verifier = bootstrap_verifier_bytes(artifact)
+    verifier_key = f"bootstrap/{manifest['version']}/ty-release-fetch-linux-arm64"
+    verifier_hash = hashlib.sha256(verifier).hexdigest() if verifier is not None else ""
     if pathlib.Path(artifact).name != pathlib.PurePosixPath(artifact_key).name:
         raise ValueError("local archive name does not match the signed manifest")
     # The channel object is the only mutable release object. If the prior
@@ -255,6 +306,23 @@ def publish(s3, artifact, bundle_bytes, manifest):
             ContentType="application/json", CacheControl="public, max-age=31536000, immutable",
         )
     wait_for_public(bundle_key, hashlib.sha256(bundle_bytes).hexdigest(), len(bundle_bytes))
+    if verifier is not None and not object_exists(s3, verifier_key):
+        s3.put_object(
+            Bucket=BUCKET, Key=verifier_key, Body=verifier,
+            ContentType="application/octet-stream", CacheControl="public, max-age=31536000, immutable",
+        )
+    if verifier is not None:
+        wait_for_public(verifier_key, verifier_hash, len(verifier))
+
+    if bootstrap_script is not None:
+        bootstrap_key = f"bootstrap/{manifest['version']}/bootstrap-oec.sh"
+        bootstrap_hash = hashlib.sha256(bootstrap_script).hexdigest()
+        if not object_exists(s3, bootstrap_key):
+            s3.put_object(
+                Bucket=BUCKET, Key=bootstrap_key, Body=bootstrap_script,
+                ContentType="text/x-shellscript", CacheControl="public, max-age=31536000, immutable",
+            )
+        wait_for_public(bootstrap_key, bootstrap_hash, len(bootstrap_script))
 
     # Never advance the mutable channel pointer until both immutable objects
     # have been uploaded and read back through the real public domain.
@@ -271,12 +339,16 @@ def main(argv=None):
     parser.add_argument("--bundle", required=True, type=pathlib.Path)
     parser.add_argument("--public-key", required=True, type=pathlib.Path)
     parser.add_argument("--verifier", required=True, type=pathlib.Path)
+    parser.add_argument("--bootstrap-script", type=pathlib.Path, required=True,
+                        help="generated, version-pinned bootstrap-oec.sh to mirror alongside the verifier")
     args = parser.parse_args(argv)
     for name in ("TY_R2_ACCESS_KEY_ID", "TY_R2_SECRET_ACCESS_KEY", "TY_R2_ENDPOINT"):
         if not os.environ.get(name):
             parser.error(f"missing {name}")
     verify_local(args.verifier, args.bundle, args.public_key, args.artifact)
     audit_overlay(args.artifact, args.public_key.read_bytes())
+    if hashlib.sha256(args.public_key.read_bytes()).hexdigest() != PINNED_PUBLIC_KEY_SHA256:
+        parser.error("release public key does not match the pinned TY Gateway key")
     bundle, manifest = read_bundle(args.bundle)
     if not args.artifact.is_file() or not args.public_key.is_file():
         parser.error("archive or public key is missing")
@@ -294,7 +366,14 @@ def main(argv=None):
         aws_secret_access_key=os.environ["TY_R2_SECRET_ACCESS_KEY"],
         region_name="auto",
     )
-    channel_key = publish(s3, args.artifact, bundle, manifest)
+    if (not args.bootstrap_script.is_file() or args.bootstrap_script.is_symlink() or
+            args.bootstrap_script.stat().st_size <= 0 or args.bootstrap_script.stat().st_size > 256 << 10):
+        parser.error("bootstrap script is missing, unsafe, or too large")
+    bootstrap_bytes = args.bootstrap_script.read_bytes()
+    fetch_binary = bootstrap_verifier_bytes(args.artifact)
+    if fetch_binary is None or bootstrap_bytes != render_bootstrap(manifest, args.public_key.read_bytes(), fetch_binary):
+        parser.error("bootstrap script does not match the pinned release and signed verifier")
+    channel_key = publish(s3, args.artifact, bundle, manifest, bootstrap_bytes)
     print(f"published {manifest['version']} to {BUCKET}/{channel_key}")
 
 

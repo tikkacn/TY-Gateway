@@ -4,7 +4,7 @@ TY Gateway 是面向 ARM64 单网口旁路由设备的管理与分流软件。�
 
 ## 当前状态
 
-首次安装脚本、离线安装包及 GitHub/R2 双源更新仍在第二台全新 Armbian 设备上验收前的准备阶段。**目前不要把这里当作可用的一键安装入口；尚无稳定版发布。**已有测试设备不应仅因为本仓库出现文件就自动升级。
+首次安装流程正在第二台全新 Armbian 设备上验收；**目前尚无可以直接运行的已签名一键安装版本，也没有 stable 发布。**已有测试设备不应仅因为本仓库出现文件就自动升级。
 
 验收通过后，仓库会提供：
 
@@ -23,11 +23,15 @@ GitHub 和 R2 只负责分发。设备身份、订阅、FRP 凭据、密码与�
 
 ## 发布约定
 
-`release-index` 分支将保存 `channels/<channel>/linux-arm64/latest.json` 的**签名版本入口**和经过审核的 bootstrap 脚本。GitHub Release 的 `v<版本>` 标签保存不可变软件包及其安装验证器。相同签名包另存于独立 R2 桶；两处内容冲突时设备拒绝更新。公开仓库不保存签名私钥或 R2 写入凭据。
+GitHub Release 的 `v<版本>` 标签保存不可变签名软件包、引导验签器及版本固定的一键安装脚本。TY Gateway 独立 R2 桶保存同一签名包，并镜像 `bootstrap/<版本>/bootstrap-oec.sh` 与验签器，作为备用下载源。未来的 `release-index` 分支保存 `channels/<channel>/linux-arm64/latest.json` 签名版本入口。新版本发布时，安装脚本、验签器和签名软件包必须都读回校验成功，才推进通道指针。公开仓库不保存签名私钥或 R2 写入凭据。
 
 当前仓库暂不提供有效的安装命令；完成第二台设备验收后再发布。
 
 `scripts/bootstrap-oec.template.sh` 与 `scripts/prepare-oec-bootstrap.py` 是构建阶段源码，不是可直接运行的安装入口。模板中的版本、验签器哈希和公钥必须由已签名的软件包生成，并经新设备验收，才会发布为实际安装脚本。
+
+当前模板已包含完整的 Armbian 首装流程：安装 `dnsmasq-base`、`python3-dbus` 等运行依赖；从 DAE 官方 GitHub 下载 ARM64 `dae` 2.1.1 并校验固定 SHA-256；安全解出程序、systemd 单元和规则数据，再安装经 TY Gateway 固定公钥验证的设备程序包。它只支持带 systemd、NetworkManager、apt 的 Debian/Ubuntu ARM64 Armbian。安装器不升级系统、不替换内核、不配置网卡地址，并让 DHCP、局域网 DNS 和代理开关保持关闭。DAE 的 eBPF 内核配置检查会引用官方要求；检查未通过时软件可安装，但代理必须保持关闭。模板尚未生成可运行的发布脚本，不能直接拿它在设备上安装。
+
+DAE 二进制由设备在安装时直接从 [daeuniverse/dae 官方发布](https://github.com/daeuniverse/dae/releases/tag/v2.1.1)获取，版本与 SHA-256 固定在安装模板中；我们不把 DAE 二进制重新打包上传到 TY Gateway 的 GitHub 或 R2。
 
 ## 源码索引
 

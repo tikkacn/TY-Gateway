@@ -22,11 +22,13 @@ MAC 预登记后自动认领、每设备 FRP 凭据及端口、管理员远端�
 
 ## 安装与版本规则
 
-公开分发仓库为 `tikkacn/TY-Gateway`。GitHub Release 的 `v<版本>` 资产和独立 R2 桶应提供相同签名版本；`release-index` 分支未来保存 `channels/<pilot|stable>/linux-arm64/latest.json`。签名私钥、R2 写入凭据、FRP token、订阅 URL 和设备凭据永远不进仓库、Release 或安装包。
+公开分发仓库为 `tikkacn/TY-Gateway`。GitHub Release 的 `v<版本>` 资产和独立 R2 桶应提供相同签名版本；首装需要的 `bootstrap-oec.sh` 与独立 `ty-release-fetch-linux-arm64` 也必须分别存在于 GitHub Release 和 `oec.uutec.net/bootstrap/<版本>/`。R2 发布器在签名包、清单和引导资产读回成功后，最后才推进通道入口。`release-index` 分支未来保存 `channels/<pilot|stable>/linux-arm64/latest.json`。签名私钥、R2 写入凭据、FRP token、订阅 URL 和设备凭据永远不进仓库、Release 或安装包。
 
 设备端下载器固定 Ed25519 公钥并校验通道、平台、版本、包大小、SHA-256 和归档安全性。GitHub/R2 任一端网络不可用时可用另一端；任一端返回无效签名、坏哈希或同版本内容冲突时应停止更新。不要把镜像 URL 做成客户页面任意输入项。
 
-`scripts/bootstrap-oec.template.sh` 不是直接运行的安装器。签名包准备后，`scripts/prepare-oec-bootstrap.py` 会核对独立 ARM64 验签器与**已签名 overlay 内**的验签器完全相同，并生成固定版本/哈希/公钥的离线安装套件。新设备安装和已安装设备升级共用签名包，但入口不同：首次安装用 bootstrap，在线/离线升级用本地页面或 root 更新器。生成的 bootstrap 及 Release 资产必须先在第二台 OEC 验收，再公开发布。
+`scripts/bootstrap-oec.template.sh` 不是直接运行的安装器。签名包准备后，`scripts/prepare-oec-bootstrap.py` 会核对独立 ARM64 验签器与**已签名 overlay 内**的验签器完全相同，并生成固定版本/通道/哈希/公钥的在线首装脚本。脚本面向 Debian/Ubuntu 系 Armbian，自动安装 `dnsmasq-base`、`python3-dbus` 等 apt 依赖，从 dae 官方 v2.1.1 发布下载 ARM64 `.deb` 并固定 SHA-256，再手工解出二进制、systemd 单元和 geo 数据，绕过会直接调用 `systemctl restart dae` 的 post-install 步骤。它不替换内核，不启用 DHCP、LAN DNS 或代理。首装脚本依赖 apt 源、GitHub/R2 分发、DAE 官方 GitHub 均可访问；其中 TY Gateway 包可 GitHub/R2 互为主备，官方 DAE 暂时只从上游 GitHub 下载。这是在线一键安装，不是离线首装包。离线升级仍使用本地页面上传同一签名包。发布器调用必须提供 `--bootstrap-script <prepare 输出目录>/bootstrap-oec.sh`，否则会拒绝发布；生成的 bootstrap 及 Release 资产必须先在第二台 OEC 验收，再公开发布。
+
+第二台预检设备报告 `aarch64`、Armbian 26.11 / Ubuntu 26.04、NetworkManager 与 Python DBus 已有、`dnsmasq-base` 和 DAE 尚缺，内核为 `6.1.157-rk35xx-ophub`，用户报告 BTF 与 BPF 文件系统可用。6.1 满足 DAE 5.17 最低版本，但完整 eBPF 内核配置尚未核实；安装脚本按 dae 官方文档逐项读取配置，BTF 与 bpffs 单独不能作为代理可用证明。应注意当前 Cloud / 数据库 / 独立 FRPS listener 的 MAC 自动注册与 per-device FRP 路径仍在源码阶段，不能据此承诺第二台自动注册和救援隧道会成功。
 
 ## 接手顺序
 

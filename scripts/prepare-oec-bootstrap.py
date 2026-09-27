@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Prepare an unpublished, credential-free first-install kit from a signed release.
+"""Prepare a pinned online first-install kit from a signed release.
 
-The output is NOT a publisher. Review and test it on a fresh ARM64 device before
-putting its installer/verifier on GitHub or the isolated TY Gateway R2 bucket.
+The installer downloads signed TY Gateway artifacts from GitHub/R2 and obtains
+OS runtime dependencies from configured Debian/Ubuntu package sources. This is
+not an offline first-install kit or a publisher.
 """
 
 import argparse
@@ -88,9 +89,10 @@ def prepare(args):
     fetch_hash = check_fetch_matches_signed_archive(args.fetch, args.artifact)
     script = TEMPLATE.read_text(encoding="utf-8")
     script = script.replace("@RELEASE_VERSION@", manifest["version"])
+    script = script.replace("@RELEASE_CHANNEL@", manifest["channel"])
     script = script.replace("@FETCH_SHA256@", fetch_hash)
     script = script.replace("@PUBLIC_KEY_BASE64@", base64.b64encode(args.public_key.read_bytes()).decode("ascii"))
-    if "@RELEASE_VERSION@" in script or "@FETCH_SHA256@" in script or "@PUBLIC_KEY_BASE64@" in script:
+    if re.search(r"@[A-Z_]+@", script):
         raise ValueError("bootstrap template has unresolved placeholders")
     output = args.output.resolve()
     if output.exists():
@@ -101,15 +103,14 @@ def prepare(args):
         (stage / "bootstrap-oec.sh").write_text(script, encoding="utf-8", newline="\n")
         shutil.copyfile(args.fetch, stage / FETCH_NAME)
         shutil.copyfile(args.public_key, stage / "release-public.pem")
-        shutil.copyfile(args.bundle, stage / "release.json")
-        shutil.copyfile(args.artifact, stage / ARTIFACT_NAME)
         sums = []
-        for name in ("bootstrap-oec.sh", FETCH_NAME, "release-public.pem", "release.json", ARTIFACT_NAME):
+        for name in ("bootstrap-oec.sh", FETCH_NAME, "release-public.pem"):
             sums.append(f"{sha256_file(stage / name)}  {name}")
         (stage / "SHA256SUMS").write_text("\n".join(sums) + "\n", encoding="ascii")
         os.chmod(stage / "bootstrap-oec.sh", 0o755)
         os.replace(stage, output)
-    print(f"prepared {manifest['channel']} {manifest['version']} offline kit: {output}")
+    print(f"prepared pinned online bootstrap for {manifest['channel']} {manifest['version']}: {output}")
+    print("The installer still needs network access for apt dependencies and the official DAE package.")
     print("NOT PUBLISHED. Fresh-device testing and source/package review are still required.")
 
 

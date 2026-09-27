@@ -54,7 +54,7 @@ Agent 通过单独的 `typroxy` 组 Unix socket 向本地管理程序提供窄�
 
 测试使用临时根目录和模拟的 systemd 命令，不会修改当前电脑的服务或网络；覆盖首装、重复安装、FRPC 启用/运行/停止/屏蔽状态、校验失败及安装回退。它不能替代在 OEC 上的升级与重启验收。
 
-dae 辅助器以 root 运行，但只接受受限 Unix socket 上的订阅配置请求，不执行任意 shell；它将订阅响应暂存为 `/etc/dae/ty-gateway/subscription.raw`（权限 0600），向 dae 添加单独的托管配置 include，先运行 `dae validate` 再 reload。失败时恢复 dae 配置和上一份订阅。URL 和响应正文不会写入 Agent 状态文件或日志。安装器不会改写 `/boot`、Loader、DTB 或现有网卡配置。LAN 服务默认关闭；安装前需准备 `dnsmasq-base` 和 `python3-dbus`。首次安装的 Agent 会按 `TY_AGENT_AUTO_ENROLL` 自动尝试 MAC allowlist 认领；升级保留已有 credentials。通用包不携带上海 FRPS 全局 token、roster token、设备 secret 或激活文件。每设备 FRP 源码使用独立 control listener、端口池、TLS CA 和设备/端口派生凭据；Cloud 开关默认关闭，只有完成独立 FRPS/plugin 部署并配置 `TY_FRP_AUTO_ENABLED=1` 后才可能下发。当前版本尚未部署到 Cloud、FRPS 或 OEC。
+dae 辅助器以 root 运行，但只接受受限 Unix socket 上的订阅配置请求，不执行任意 shell；它将订阅响应暂存为 `/etc/dae/ty-gateway/subscription.raw`（权限 0600），向 dae 添加单独的托管配置 include，先运行 `dae validate` 再 reload。失败时恢复 dae 配置和上一份订阅。URL 和响应正文不会写入 Agent 状态文件或日志。overlay 安装器不会改写 `/boot`、Loader、DTB 或现有网卡配置。手动安装 overlay 前需准备 `dnsmasq-base`、`python3-dbus`、NetworkManager 和官方 dae；新设备应使用生成的 `bootstrap-oec.sh`，它自动安装缺失的 apt 运行依赖、校验并安装固定版本的官方 DAE，再安装签名 overlay。它不会运行 DAE Debian 包的 post-install 脚本，也不会启用 DAE、DHCP 或局域网 DNS。首次安装的 Agent 会按 `TY_AGENT_AUTO_ENROLL` 自动尝试 MAC allowlist 认领；升级保留已有 credentials。通用包不携带上海 FRPS 全局 token、roster token、设备 secret 或激活文件。每设备 FRP 源码使用独立 control listener、端口池、TLS CA 和设备/端口派生凭据；Cloud 开关默认关闭，只有完成独立 FRPS/plugin 部署并配置 `TY_FRP_AUTO_ENABLED=1` 后才可能下发。当前版本尚未部署到 Cloud、FRPS 或 OEC。
 
 绑定 LAN 的 dae 要求接口的 IPv6 forwarding 为 1。NetworkManager 1.36 在重新接管网卡时可能将该接口参数重置为 0，即使 `/etc/sysctl.d` 已设置为 1。本包在 NetworkManager 的网卡上线、重新应用和 DHCP 变化事件后重新设置托管 LAN 接口的 forwarding，并在 dae 启动及重载前再次确认。只处理 dae 托管配置指定的接口，不会更改网卡地址或启动 DHCP/DNS；不要只依赖开机执行一次的 sysctl 设置。
 
@@ -79,7 +79,7 @@ dae 辅助器以 root 运行，但只接受受限 Unix socket 上的订阅配置
 
 ## 关于轻量化
 
-之前约 3.87GB 是整盘镜像文件大小，不是 Agent 的运行内存需求。最终系统大小由 OEC 专用底包的分区和启动链决定，不能为了变小而重建分区或删除未知分区。当前 overlay 本身只增加服务所需文件；不装桌面、Docker、面板、编译工具链，不包含 dae。待底包原样稳定后，再按 2GB 内存和 8GB eMMC 做日志、缓存配额与 dae 实测。
+之前约 3.87GB 是整盘镜像文件大小，不是 Agent 的运行内存需求。最终系统大小由 OEC 专用底包的分区和启动链决定，不能为了变小而重建分区或删除未知分区。部署不装桌面、Docker、面板或编译工具链，也不替换系统内核。DAE 是否可用还取决于内核版本及官方列出的 eBPF 配置；仅有 BTF 与 BPF 文件系统不足以证明 DAE 可代理。待底包原样稳定后，再按 2GB 内存和 8GB eMMC 做日志、缓存配额与 dae 实测。
 
 ## 旧整盘构建脚本
 
