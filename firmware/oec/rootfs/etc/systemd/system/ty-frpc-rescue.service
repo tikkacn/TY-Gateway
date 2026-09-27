@@ -1,0 +1,32 @@
+[Unit]
+Description=TY Gateway optional SSH rescue tunnel
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/ty-gateway/frpc.toml
+ConditionPathExists=/etc/ty-gateway/shanghai-ca.crt
+ConditionPathExists=/etc/ty-gateway/frps.token
+
+[Service]
+Type=simple
+User=tygateway
+Group=tygateway
+ExecStart=/usr/local/bin/frpc -c /etc/ty-gateway/frpc.toml
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+UMask=0077
+LimitNOFILE=256
+
+[Install]
+WantedBy=multi-user.target

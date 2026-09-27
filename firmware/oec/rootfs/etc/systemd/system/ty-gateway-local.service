@@ -1,0 +1,35 @@
+[Unit]
+Description=TY Gateway local OEC management
+After=network-online.target ty-gateway-network.service ty-gateway-update-service.service
+Wants=network-online.target
+Wants=ty-gateway-network.service
+Wants=ty-gateway-update-service.service
+
+[Service]
+Type=simple
+User=tylocal
+Group=tylocal
+SupplementaryGroups=typroxy
+EnvironmentFile=-/etc/ty-gateway/local.env
+Environment=TY_LOCAL_NETWORK_SOCKET=/run/ty-gateway-network/control.sock
+ExecStart=/usr/local/bin/ty-gateway-local
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/var/lib/ty-gateway-local
+UMask=0077
+LimitNOFILE=256
+
+[Install]
+WantedBy=multi-user.target

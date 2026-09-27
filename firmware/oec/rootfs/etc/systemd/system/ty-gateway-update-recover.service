@@ -1,0 +1,14 @@
+[Unit]
+Description=Recover an interrupted TY Gateway software update
+DefaultDependencies=no
+After=local-fs.target
+Before=ty-gateway-agent.service ty-gateway-local.service ty-gateway-network.service
+ConditionPathExists=/var/lib/ty-gateway-update/pending.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/ty-gateway-update recover
+TimeoutStartSec=240
+
+[Install]
+WantedBy=multi-user.target

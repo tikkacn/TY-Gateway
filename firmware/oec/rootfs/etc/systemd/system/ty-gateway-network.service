@@ -1,0 +1,32 @@
+[Unit]
+Description=TY Gateway restricted IPv4 configuration helper
+After=NetworkManager.service
+Requires=NetworkManager.service
+
+[Service]
+Type=simple
+User=root
+Group=tylocal
+EnvironmentFile=-/etc/ty-gateway/local.env
+ExecStart=/usr/bin/python3 /usr/local/libexec/ty-gateway-network
+Restart=on-failure
+RestartSec=3
+RuntimeDirectory=ty-gateway-network
+RuntimeDirectoryMode=0750
+StateDirectory=ty-gateway-network
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_BIND_SERVICE
+ReadWritePaths=/var/lib/ty-gateway-network /run/ty-gateway-network
+LimitNOFILE=128
+
+[Install]
+WantedBy=multi-user.target

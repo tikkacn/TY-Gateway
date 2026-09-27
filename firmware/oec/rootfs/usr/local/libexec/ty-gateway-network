@@ -1,0 +1,310 @@
+#!/usr/bin/python3
+"""Restricted local IPv4 apply service; NetworkManager owns the rollback timer.
+
+Only the root-configured interface can change. LAN services have a separate
+transaction; dae is outside this protocol. The previous NM profile is retained.
+"""
+import ipaddress
+import json
+import os
+import select
+import socket
+import socketserver
+import struct
+import subprocess
+import threading
+import time
+import uuid
+import ty_gateway_lan as lan
+from pathlib import Path
+
+PENDING = {"preparing", "queued", "applying", "awaiting_login", "rollback_failed"}
+
+
+def valid_plan(request):
+    try:
+        address = ipaddress.IPv4Interface(request["address_cidr"])
+        gateway = ipaddress.IPv4Address(request["gateway"])
+        if not 8 <= address.network.prefixlen <= 30:
+            raise ValueError()
+        for host in (address.ip, gateway):
+            if (host not in address.network or host in (address.network.network_address, address.network.broadcast_address)
+                    or host.is_loopback or host.is_multicast or host.is_link_local or host.is_unspecified):
+                raise ValueError()
+        if gateway == address.ip:
+            raise ValueError()
+        return str(address), str(gateway)
+    except (ValueError, KeyError, TypeError):
+        raise ValueError("地址或上游网关无效，请填写带网段的地址，例如 10.23.42.10/24。") from None
+
+
+def arp_conflict(frame, own_mac, target):
+    if len(frame) < 42 or frame[12:14] != b"\x08\x06":
+        return False
+    if frame[14:20] != b"\x00\x01\x08\x00\x06\x04" or frame[22:28] == own_mac:
+        return False
+    if frame[20:22] not in (b"\x00\x01", b"\x00\x02"):
+        return False
+    return frame[28:32] == target or (frame[28:32] == b"\0" * 4 and frame[38:42] == target)
+
+
+class NetworkManager:
+    def __init__(self, interface):
+        self.interface = interface
+
+    def run(self, *args):
+        p = subprocess.run(["/usr/bin/nmcli", "--wait", "20", *args], capture_output=True,
+                           text=True, timeout=25, env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"})
+        if p.returncode:
+            raise RuntimeError("网络管理器未能完成操作；已尝试恢复原配置。")
+        return p.stdout.strip()
+
+    def manager(self):
+        import dbus
+        bus = dbus.SystemBus(private=True)
+        return dbus.Interface(bus.get_object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager"),
+                              "org.freedesktop.NetworkManager")
+
+    def snapshot(self):
+        original = self.run("-g", "GENERAL.CON-UUID", "device", "show", self.interface)
+        uuid.UUID(original)
+        addresses = self.run("-g", "IP4.ADDRESS", "device", "show", self.interface).splitlines()
+        if len(addresses) != 1:
+            raise ValueError("当前网卡必须只有一个 IPv4 地址，才能自动切换。")
+        dns = self.run("-g", "IP4.DNS", "device", "show", self.interface).splitlines()
+        dns = [str(ipaddress.IPv4Address(x)) for x in dns if x]
+        priority = int(self.run("-g", "connection.autoconnect-priority", "connection", "show", "uuid", original))
+        return {"original": original, "old_address": str(ipaddress.IPv4Interface(addresses[0])),
+                "dns": dns, "priority": priority}
+
+    def probe(self, target, current):
+        if target == str(ipaddress.IPv4Interface(current).ip):
+            return
+        own_mac = bytes.fromhex(Path("/sys/class/net", self.interface, "address").read_text().strip().replace(":", ""))
+        target_bytes = socket.inet_aton(target)
+        packet = b"\xff" * 6 + own_mac + b"\x08\x06" + struct.pack("!HHBBH", 1, 0x0800, 6, 4, 1)
+        packet += own_mac + b"\0" * 4 + b"\0" * 6 + target_bytes
+        with socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(0x0806)) as sock:
+            sock.bind((self.interface, 0))
+            for _ in range(3):
+                sock.send(packet)
+                end = time.monotonic() + 0.8
+                while time.monotonic() < end:
+                    if select.select([sock], [], [], max(0, end - time.monotonic()))[0]:
+                        if arp_conflict(sock.recv(2048), own_mac, target_bytes):
+                            raise ValueError("目标 IP 已有设备使用或正在申请，请选择其他地址。")
+
+    def checkpoint(self, seconds):
+        import dbus
+        manager = self.manager()
+        device = manager.GetDeviceByIpIface(self.interface)
+        # flags=0: never delete other profiles created by unrelated services.
+        return str(manager.CheckpointCreate(dbus.Array([device], signature="o"), dbus.UInt32(seconds), dbus.UInt32(0)))
+
+    def prepare(self, tx):
+        self.run("connection", "clone", "--temporary", "uuid", tx["original"], tx["candidate"])
+        self.run("connection", "modify", "--temporary", "id", tx["candidate"],
+                 "connection.autoconnect", "no", "ipv4.method", "manual", "ipv4.addresses", tx["address_cidr"],
+                 "ipv4.gateway", tx["gateway"], "ipv4.dns", ",".join(tx["dns"] or [tx["gateway"]]),
+                 "ipv4.ignore-auto-dns", "yes")
+
+    def activate(self, tx):
+        self.run("connection", "up", "id", tx["candidate"], "ifname", self.interface)
+
+    def verify_target(self, tx):
+        active = self.run("-g", "GENERAL.CONNECTION", "device", "show", self.interface)
+        addresses = self.run("-g", "IP4.ADDRESS", "device", "show", self.interface).splitlines()
+        if active != tx["candidate"] or addresses != [tx["address_cidr"]]:
+            raise ValueError("新地址尚未就绪，不能确认配置。")
+
+    def commit(self, tx):
+        self.verify_target(tx)
+        # Persist the candidate while autoconnect is still disabled. Until destroy,
+        # NM can independently restore the old active profile. Recovery journal
+        # handles a crash after destroy but before final commit.
+        self.run("connection", "modify", "id", tx["candidate"], "connection.autoconnect", "no")
+        self.manager().CheckpointDestroy(tx["checkpoint"])
+        priority = min(999, tx["priority"] + 1)
+        if priority <= tx["priority"]:
+            raise ValueError("原网络连接优先级过高，无法安全固定新配置。")
+        self.run("connection", "modify", "id", tx["candidate"], "connection.autoconnect-priority", str(priority),
+                 "connection.autoconnect", "yes")
+
+    def restore(self, tx):
+        if tx.get("checkpoint"):
+            try:
+                self.manager().CheckpointRollback(tx["checkpoint"])
+            except Exception:
+                pass  # The independent NM deadline may already have restored it.
+        self.run("connection", "up", "uuid", tx["original"], "ifname", self.interface)
+        if self.run("-g", "GENERAL.CON-UUID", "device", "show", self.interface) != tx["original"]:
+            raise RuntimeError("尚未恢复原网络连接，需要管理员检查。")
+        try:
+            self.run("connection", "delete", "id", tx["candidate"])
+        except Exception:
+            pass
+        if tx.get("checkpoint"):
+            try:
+                self.manager().CheckpointDestroy(tx["checkpoint"])
+            except Exception:
+                pass
+
+
+class Controller:
+    def __init__(self, backend, path, timeout=180, delay=3, schedule=None):
+        self.backend, self.path, self.timeout, self.delay = backend, Path(path), timeout, delay
+        self.lock = threading.RLock()
+        self.schedule = schedule or self.timer
+        self.tx = json.loads(self.path.read_text()) if self.path.exists() else {"phase": "idle"}
+        if self.tx["phase"] in PENDING:
+            self.rollback("上一次地址变更未确认，已恢复原网络配置。")
+
+    @staticmethod
+    def timer(seconds, callback, txid):
+        timer = threading.Timer(seconds, callback, args=(txid,))
+        timer.daemon = True
+        timer.start()
+
+    def persist(self):
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        temp = self.path.with_suffix(".tmp")
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as out:
+            json.dump(self.tx, out)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(temp, self.path)
+        fd = os.open(self.path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    def status(self):
+        return {k: self.tx[k] for k in ("phase", "target_ip", "old_ip", "deadline", "message") if k in self.tx}
+
+    def rollback(self, message):
+        try:
+            self.backend.restore(self.tx)
+            self.tx.update(phase="rolled_back", message=message)
+        except Exception:
+            self.tx.update(phase="rollback_failed", message="自动恢复尚未完成，请联系管理员；请勿再次修改地址。")
+        self.persist()
+
+    def start(self, request):
+        with self.lock:
+            if lan.status()['dhcp_active'] or lan.status()['lan_dns_active']:
+                raise ValueError("请先关闭 DHCP 和局域网 DNS 并应用，再修改管理地址。")
+            if self.tx["phase"] in PENDING:
+                raise ValueError("已有地址变更等待确认或恢复，请先完成该操作。")
+            address, gateway = valid_plan(request)
+            snapshot = self.backend.snapshot()
+            old = ipaddress.IPv4Interface(snapshot["old_address"])
+            new = ipaddress.IPv4Interface(address)
+            if new.network != old.network:
+                raise ValueError("本次只支持在当前局域网网段内更换固定地址。")
+            if snapshot["priority"] >= 999:
+                raise ValueError("原网络连接优先级过高，请联系管理员。")
+            self.backend.probe(str(new.ip), snapshot["old_address"])
+            self.tx = dict(snapshot, phase="preparing", address_cidr=address, gateway=gateway,
+                           target_ip=str(new.ip), old_ip=str(old.ip), candidate="ty-local-" + uuid.uuid4().hex,
+                           deadline=int(time.time()) + self.timeout, message="地址正在准备切换。")
+            self.persist()
+            try:
+                self.tx["checkpoint"] = self.backend.checkpoint(self.timeout)
+                self.persist()
+                self.backend.prepare(self.tx)
+                self.tx["phase"] = "queued"
+                self.persist()
+            except Exception:
+                self.rollback("准备失败，已恢复原网络配置。")
+                raise RuntimeError("地址变更准备失败，未完成应用。") from None
+            txid = self.tx["candidate"]
+            self.schedule(self.delay, self.activate, txid)
+            self.schedule(self.timeout + 1, self.expire, txid)
+            return self.status()
+
+    def activate(self, txid):
+        with self.lock:
+            if self.tx.get("candidate") != txid or self.tx["phase"] != "queued":
+                return
+            try:
+                self.tx["phase"] = "applying"
+                self.persist()
+                self.backend.activate(self.tx)
+                self.backend.verify_target(self.tx)
+                self.tx.update(phase="awaiting_login", message="请在新地址重新登录，登录后保留配置；超时自动恢复。")
+                self.persist()
+            except Exception:
+                self.rollback("地址切换失败，已恢复原网络配置。")
+
+    def expire(self, txid):
+        with self.lock:
+            if self.tx.get("candidate") == txid and self.tx["phase"] in PENDING:
+                self.rollback("未在新地址确认登录，已恢复原网络配置。")
+
+    def handle(self, request):
+        with self.lock:
+            action = request.get("action")
+            if action == "status":
+                return self.status()
+            if action == "lan_status":
+                return lan.status()
+            if action == "lan_apply":
+                if self.tx['phase'] in PENDING:
+                    raise ValueError('请先在新地址登录，完成地址变更确认。')
+                return lan.apply(json.loads(request['settings']), request.get('router_dhcp_off') == 'true', self.backend)
+            if action == "apply":
+                return self.start(request)
+            if action == "confirm":
+                if self.tx["phase"] != "awaiting_login" or time.time() >= self.tx["deadline"]:
+                    raise ValueError("当前没有可确认的地址变更，或确认已超时。")
+                if request.get("local_ip") != self.tx["target_ip"]:
+                    raise ValueError("请从新地址登录后确认。")
+                try:
+                    self.backend.commit(self.tx)
+                    self.tx.update(phase="committed", message="新地址已生效并保留，DHCP/DNS 服务未启动。")
+                    self.persist()
+                except Exception:
+                    self.rollback("确认未完成，已恢复原网络配置。")
+                    raise RuntimeError("确认新地址失败，正在恢复原配置。") from None
+                return self.status()
+            raise ValueError("不支持的网络操作。")
+
+
+def main():
+    if os.geteuid() != 0:
+        raise RuntimeError("root service required")
+    interface = lan.interface_name()
+    socket_path = "/run/ty-gateway-network/control.sock"
+    controller = Controller(NetworkManager(interface), "/var/lib/ty-gateway-network/transaction.json")
+    lan.recover()
+
+    class Handler(socketserver.StreamRequestHandler):
+        def handle(self):
+            self.request.settimeout(15)
+            try:
+                raw = self.rfile.readline(65537)
+                if len(raw) > 65536:
+                    raise ValueError("请求过大。")
+                request = json.loads(raw)
+                if not isinstance(request, dict):
+                    raise ValueError("请求无效。")
+                response = controller.handle(request)
+            except (ValueError, RuntimeError) as exc:
+                response = {"error": str(exc)}
+            except Exception:
+                response = {"error": "网络操作未完成，请查看当前地址状态。"}
+            self.wfile.write((json.dumps(response) + "\n").encode())
+
+    try:
+        os.unlink(socket_path)
+    except FileNotFoundError:
+        pass
+    with socketserver.ThreadingUnixStreamServer(socket_path, Handler) as server:
+        os.chmod(socket_path, 0o660)
+        server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

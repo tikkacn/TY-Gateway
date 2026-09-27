@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+if ! getent group tygateway >/dev/null 2>&1; then
+    groupadd --system tygateway
+fi
+if ! getent group typroxy >/dev/null 2>&1; then
+    groupadd --system typroxy
+fi
+if ! getent passwd tygateway >/dev/null 2>&1; then
+    useradd --system --gid tygateway --home-dir /var/lib/ty-gateway --shell /usr/sbin/nologin tygateway
+fi
+
+install -d -m 0700 -o tygateway -g tygateway /var/lib/ty-gateway
+install -d -m 0750 -o root -g tygateway /etc/ty-gateway
+touch /var/lib/ty-gateway/.initialized
+chown tygateway:tygateway /var/lib/ty-gateway/.initialized
+chmod 0600 /var/lib/ty-gateway/.initialized

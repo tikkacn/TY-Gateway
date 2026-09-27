@@ -1,0 +1,48 @@
+{
+  "format_version": 1,
+  "name": "ty-gateway-oec-test",
+  "status": "awaiting-oec-specific-base",
+  "device_family": "OnethingCloud OEC",
+  "board_revision": "OEC L1.0 (user-reported PCB silkscreen)",
+  "memory": "2GB",
+  "system_storage": "8GB eMMC",
+  "soc_baseline": "Rockchip RK3566",
+  "network": "1x 1GbE",
+  "storage": ["1x SATA 3.0", "1x USB 3.0"],
+  "boot_transport": "Rockchip USB MASKROM/Loader",
+  "kernel_baseline": "Linux 6.x ARM64 supplied by the verified OEC base",
+  "rootfs_baseline": "minimal Debian 12/Armbian-compatible rootfs",
+  "boot_target": "preserve-the-verified-base-boot-files",
+  "frpc_path": "/usr/local/bin/frpc",
+  "loader": {
+    "file": "oec-loader.bin",
+    "source": "user-provided MiniLoaderAll.bin previously used to flash fnOS on this OEC",
+    "size_bytes": 453056,
+    "sha256": "ab62386a8868b01516b560451082fbdb6342b16e850a0622577b538dd2b10d39",
+    "status": "known-good for the user's fnOS flash only; L1.0 compatibility with a new base is not yet proven"
+  },
+  "components": {
+    "gateway_agent": "required",
+    "frpc": "bundled-disabled-unconfigured-0.71.0",
+    "dae": "not-in-test-image",
+    "transparent_takeover": "not-in-test-image"
+  },
+  "cloud": {
+    "url": "https://oec.188811.xyz",
+    "registration": "admin-mac-allowlist-first-claim-source-not-deployed",
+    "secret_storage": "/var/lib/ty-gateway/credentials.json"
+  },
+  "rescue": {
+    "location": "Shanghai",
+    "server_port": 7001,
+    "purpose": "SSH maintenance only",
+    "remote_ports": "22000-22099",
+    "address_source": "cloud-provided, never hardcoded in the image"
+  },
+  "candidate_base": {
+    "source": "retired; OPHUB wxy-oect base was not hardware-validated on ordinary OEC",
+    "image": "do-not-flash-oec-base.img",
+    "reason": "A DTB path substitution is insufficient to prove ordinary-OEC boot-chain, partition, kernel and network compatibility",
+    "next_base_policy": "Use an OEC/OECT community-tested base such as oec-jp.img, verify it unchanged on this device, then add the TY overlay; never rewrite its boot partition"
+  }
+}

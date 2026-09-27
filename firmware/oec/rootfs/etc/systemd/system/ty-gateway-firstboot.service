@@ -1,0 +1,16 @@
+[Unit]
+Description=Initialize the TY Gateway OEC runtime user
+After=local-fs.target
+Before=ty-gateway-agent.service
+ConditionPathExists=!/var/lib/ty-gateway/.initialized
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/ty-gateway-firstboot
+RemainAfterExit=yes
+NoNewPrivileges=false
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

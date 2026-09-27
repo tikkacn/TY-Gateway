@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1020">
+  <title>TY Gateway · 控制台</title>
+  <style>
+    :root{--bg:#f5f7fb;--panel:#fff;--ink:#111827;--muted:#667085;--faint:#98a2b3;--line:#e7ebf2;--line-strong:#d8dee9;--nav:#0b1020;--nav-muted:#9aa7c2;--brand:#7c5cff;--brand-dark:#6045dd;--blue:#2f6fed;--green:#16a579;--amber:#d98b18;--red:#d6455d;--shadow-sm:0 1px 2px rgba(16,24,40,.04);--shadow-md:0 12px 30px rgba(16,24,40,.09);--radius:14px}
+    *{box-sizing:border-box}html,body{margin:0;min-height:100%}body{font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5}button,input,select,textarea{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.55}.hidden{display:none!important}
+    .login-gate{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 82% 16%,rgba(124,92,255,.28),transparent 32%),linear-gradient(145deg,#080d1a,#121b34 55%,#1a2240)}.login-card{width:min(430px,100%);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:38px;color:#fff;background:rgba(16,24,45,.82);box-shadow:0 30px 80px rgba(0,0,0,.34);backdrop-filter:blur(18px)}.login-card h1{margin:24px 0 8px;font-size:28px;letter-spacing:-.03em}.login-card p{color:#abb7d0;margin:0 0 28px}.login-card .field-label{color:#d9e0ef}.login-card input{width:100%;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.17);color:#fff}.login-card input::placeholder{color:#8794ae}.login-note{display:flex;gap:9px;align-items:flex-start;margin-top:18px;color:#91a0bb;font-size:12px}
+    .app-shell{min-height:100vh;display:grid;grid-template-columns:248px minmax(0,1fr)}.sidebar{display:flex;flex-direction:column;min-height:100vh;padding:22px 16px;background:var(--nav);color:#fff}.brand{display:flex;gap:11px;align-items:center;padding:4px 10px 28px}.brand-mark{width:34px;height:34px;display:grid;place-items:center;border-radius:10px;color:#fff;font-weight:800;background:linear-gradient(135deg,#8f76ff,#5b47e8);box-shadow:0 8px 18px rgba(124,92,255,.35)}.brand-copy strong{display:block;font-size:16px;letter-spacing:.01em}.brand-copy span{display:block;margin-top:1px;color:#8e9ab2;font-size:10px;letter-spacing:.16em;text-transform:uppercase}.nav-label{padding:0 12px 9px;color:#64718b;font-size:10px;font-weight:700;letter-spacing:.13em;text-transform:uppercase}.nav{display:grid;gap:4px}.nav-btn{display:flex;align-items:center;gap:12px;width:100%;border:0;border-radius:10px;padding:11px 12px;color:var(--nav-muted);text-align:left;background:transparent;transition:.18s ease}.nav-btn:hover{color:#fff;background:rgba(255,255,255,.07)}.nav-btn.active{color:#fff;background:linear-gradient(90deg,rgba(124,92,255,.28),rgba(124,92,255,.1));box-shadow:inset 3px 0 var(--brand)}.nav-icon{width:20px;color:currentColor;text-align:center;font-size:16px}.sidebar-spacer{flex:1}.env-card{margin:14px 4px 0;border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:13px;background:rgba(255,255,255,.045)}.env-card .eyebrow{color:#6f7d98}.env-row{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font-size:12px}.env-row span:last-child{color:#dce4f5}
+    .main{min-width:0}.topbar{height:70px;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:0 34px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.88);backdrop-filter:blur(14px)}.crumb{color:var(--muted);font-size:13px}.crumb strong{color:var(--ink)}.top-actions{display:flex;align-items:center;gap:12px}.connection{display:flex;align-items:center;gap:7px;color:var(--green);font-size:12px;font-weight:650}.dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 0 4px rgba(22,165,121,.12)}.avatar{width:32px;height:32px;display:grid;place-items:center;border:1px solid #ddd8ff;border-radius:50%;color:var(--brand-dark);font-size:12px;font-weight:700;background:#f0edff}.content{max-width:1480px;margin:0 auto;padding:34px}.page{display:none;animation:rise .22s ease-out}.page.active{display:block}@keyframes rise{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}.page-head{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:26px}.page-head h1{margin:0 0 6px;font-size:26px;letter-spacing:-.035em}.page-head p{margin:0;color:var(--muted)}.head-actions{display:flex;align-items:center;gap:10px}.eyebrow{color:var(--faint);font-size:11px;font-weight:750;letter-spacing:.12em;text-transform:uppercase}
+    .btn{display:inline-flex;justify-content:center;align-items:center;gap:8px;min-height:38px;border:1px solid transparent;border-radius:9px;padding:0 14px;color:#fff;font-weight:650;background:var(--brand);box-shadow:0 4px 10px rgba(124,92,255,.16);transition:.18s ease}.btn:hover{background:var(--brand-dark);transform:translateY(-1px)}.btn.secondary{color:#344054;border-color:var(--line-strong);background:#fff;box-shadow:var(--shadow-sm)}.btn.secondary:hover{background:#f8fafc}.btn.ghost{color:var(--muted);border-color:transparent;background:transparent;box-shadow:none}.btn.ghost:hover{color:var(--ink);background:#f1f3f7;transform:none}.btn.danger{background:var(--red)}.btn.small{min-height:32px;padding:0 11px;font-size:12px}
+    .metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}.metric{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:var(--radius);padding:20px;background:var(--panel);box-shadow:var(--shadow-sm)}.metric:after{position:absolute;right:-20px;bottom:-34px;width:100px;height:100px;border-radius:50%;content:"";background:rgba(124,92,255,.07)}.metric-top{display:flex;justify-content:space-between;align-items:center}.metric-icon{width:33px;height:33px;display:grid;place-items:center;border-radius:9px;color:var(--brand-dark);background:#efedff;font-size:15px}.metric-value{margin-top:15px;font-size:28px;font-weight:760;letter-spacing:-.04em}.metric-foot{display:flex;align-items:center;gap:7px;margin-top:6px;color:var(--muted);font-size:12px}.metric-foot.good{color:var(--green)}.metric-foot.warn{color:var(--amber)}.grid-2{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,.65fr);gap:18px;margin-top:18px}.panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow-sm)}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:19px 20px;border-bottom:1px solid var(--line)}.panel-head h2{margin:0;font-size:15px;letter-spacing:-.01em}.panel-head p{margin:3px 0 0;color:var(--muted);font-size:12px}.panel-body{padding:20px}
+    .status-overview{display:grid;gap:15px}.status-line{display:flex;justify-content:space-between;align-items:center;gap:12px}.status-line .label{display:flex;align-items:center;gap:9px;color:#344054;font-size:13px}.status-line .value{color:var(--ink);font-weight:700}.progress{height:7px;overflow:hidden;margin-top:8px;border-radius:99px;background:#edf0f5}.progress i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--brand),#a084ff)}.activity{display:grid;gap:16px}.activity-item{display:flex;gap:12px;align-items:flex-start}.activity-icon{flex:0 0 30px;width:30px;height:30px;display:grid;place-items:center;border-radius:9px;color:var(--brand-dark);background:#f0edff;font-size:13px}.activity-copy{min-width:0}.activity-copy strong{display:block;overflow:hidden;color:#344054;font-size:13px;font-weight:650;text-overflow:ellipsis;white-space:nowrap}.activity-copy span{color:var(--muted);font-size:12px}
+    .table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse}th{color:var(--faint);font-size:11px;font-weight:750;letter-spacing:.05em;text-align:left;text-transform:uppercase;white-space:nowrap}th,td{padding:14px 18px;border-bottom:1px solid var(--line)}tbody tr:last-child td{border-bottom:0}tbody tr:hover{background:#fbfcfe}td{color:#344054;font-size:13px;vertical-align:middle}.primary-cell strong{display:block;color:var(--ink);font-weight:680}.primary-cell span{display:block;margin-top:2px;color:var(--muted);font-size:12px}.mono{color:#475467;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}.badge{display:inline-flex;align-items:center;gap:5px;border-radius:99px;padding:4px 9px;font-size:11px;font-weight:700;white-space:nowrap}.badge:before{width:5px;height:5px;border-radius:50%;content:"";background:currentColor}.badge.green{color:var(--green);background:#e9f8f2}.badge.amber{color:var(--amber);background:#fff6df}.badge.red{color:var(--red);background:#fff0f2}.badge.gray{color:#667085;background:#f1f3f6}.toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:16px 18px;border-bottom:1px solid var(--line);background:#fbfcfe}.search{position:relative;flex:1 1 260px}.search span{position:absolute;top:9px;left:12px;color:var(--faint)}.search input{padding-left:34px}input,select,textarea{width:100%;border:1px solid var(--line-strong);border-radius:8px;padding:9px 11px;color:var(--ink);outline:none;background:#fff;transition:border .18s,box-shadow .18s}input:focus,select:focus,textarea:focus{border-color:#a99aff;box-shadow:0 0 0 3px rgba(124,92,255,.12)}select{min-width:140px}.select-compact{width:auto;min-width:130px}.empty{display:grid;place-items:center;min-height:180px;padding:30px;color:var(--muted);text-align:center}.empty-icon{width:44px;height:44px;display:grid;place-items:center;margin-bottom:11px;border-radius:13px;color:var(--brand-dark);background:#f0edff;font-size:20px}.empty strong{display:block;color:#344054}.empty span{display:block;margin-top:5px;font-size:12px}.muted{color:var(--muted)}
+    .rule-layout{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(330px,.7fr);gap:18px}.profile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.profile-card{position:relative;border:1px solid var(--line);border-radius:12px;padding:17px;background:#fff}.profile-card.selected{border-color:#b9adff;box-shadow:0 0 0 3px rgba(124,92,255,.08)}.profile-card h3{margin:0 0 7px;font-size:14px}.profile-card p{min-height:38px;margin:0;color:var(--muted);font-size:12px}.profile-card .profile-state{display:inline-block;margin-top:13px;color:var(--brand-dark);font-size:11px;font-weight:700}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:grid;gap:6px}.field.full{grid-column:1/-1}.field-label{color:#344054;font-size:12px;font-weight:650}.field-hint{color:var(--muted);font-size:11px}.check-row{display:flex;flex-wrap:wrap;gap:18px}.check-row label{display:flex;align-items:center;gap:7px;color:#475467;font-size:12px}.check-row input{width:auto}.explain-result{min-height:130px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:14px;color:#475467;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc}.security-list{display:grid;gap:1px;overflow:hidden;border:1px solid var(--line);border-radius:12px}.security-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:14px;background:#fff}.security-row+.security-row{border-top:1px solid var(--line)}.security-row strong{display:block;color:#344054;font-size:13px}.security-row span{display:block;margin-top:2px;color:var(--muted);font-size:11px}
+    .drawer-backdrop,.modal-backdrop{position:fixed;z-index:20;inset:0;display:flex;justify-content:flex-end;background:rgba(15,23,42,.32);backdrop-filter:blur(3px)}.drawer{width:min(500px,100%);height:100%;overflow:auto;padding:25px;background:#fff;box-shadow:-20px 0 50px rgba(15,23,42,.15);animation:slide .22s ease-out}@keyframes slide{from{transform:translateX(25px);opacity:.5}to{transform:translateX(0);opacity:1}}.drawer-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;padding-bottom:20px;border-bottom:1px solid var(--line)}.drawer-head h2{margin:0 0 5px;font-size:20px;letter-spacing:-.03em}.close{width:32px;height:32px;border:0;border-radius:8px;color:var(--muted);background:transparent;font-size:21px}.close:hover{background:#f2f4f7}.drawer-section{padding:21px 0;border-bottom:1px solid var(--line)}.drawer-section h3{margin:0 0 14px;font-size:13px}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}.detail-label{display:block;color:var(--muted);font-size:11px}.detail-value{display:block;overflow:hidden;margin-top:3px;color:#344054;font-size:13px;font-weight:650;text-overflow:ellipsis;white-space:nowrap}.drawer-actions{display:flex;flex-wrap:wrap;gap:9px;padding-top:21px}.modal-backdrop{z-index:30;align-items:center;justify-content:center;padding:20px}.modal{width:min(560px,100%);max-height:calc(100vh - 40px);overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:var(--shadow-md);animation:rise .2s ease-out}.modal-head,.modal-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:18px 20px}.modal-head{border-bottom:1px solid var(--line)}.modal-head h2{margin:0;font-size:17px}.modal-body{padding:20px}.modal-foot{justify-content:flex-end;border-top:1px solid var(--line)}.notice{display:flex;gap:10px;align-items:flex-start;margin-bottom:16px;border:1px solid #dce4ff;border-radius:10px;padding:12px;color:#5266a8;font-size:12px;background:#f5f7ff}.toast-stack{position:fixed;z-index:60;right:22px;bottom:22px;display:grid;gap:9px;width:min(360px,calc(100vw - 44px))}.toast{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:11px;padding:13px 14px;color:#344054;background:#fff;box-shadow:var(--shadow-md);animation:rise .2s ease-out}.toast.good{border-left:3px solid var(--green)}.toast.bad{border-left:3px solid var(--red)}.toast strong{display:block;font-size:12px}.toast span{display:block;margin-top:2px;color:var(--muted);font-size:11px}
+    @media(max-width:1080px){.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.grid-2,.rule-layout{grid-template-columns:1fr}}@media(max-width:760px){.app-shell{grid-template-columns:1fr}.sidebar{position:sticky;z-index:5;top:0;min-height:auto;padding:12px}.brand{padding:3px 7px 12px}.sidebar-spacer,.env-card,.nav-label{display:none}.nav{display:flex;overflow-x:auto;padding-bottom:2px}.nav-btn{flex:0 0 auto;width:auto;padding:9px 11px}.nav-btn.active{box-shadow:inset 0 -3px var(--brand)}.topbar{height:58px;padding:0 16px}.connection{display:none}.content{padding:23px 16px}.page-head{display:block}.head-actions{margin-top:15px}.form-grid,.profile-grid{grid-template-columns:1fr}.field.full{grid-column:auto}th,td{padding:12px}}
+  @media(max-width:760px){.metric-grid{grid-template-columns:1fr!important}.metric-top .eyebrow{letter-spacing:.02em}.login-card{padding:26px}.detail-grid{grid-template-columns:1fr}}button:focus-visible{outline:3px solid #a99aff;outline-offset:3px}.empty-icon{margin-left:auto;margin-right:auto}
+</style>
+<style>
+  .drawer.device-profile-wide{width:min(680px,100%)}
+  .device-identity-hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;margin:18px 0 4px;border:1px solid #ddd8ff;border-radius:14px;padding:18px;background:linear-gradient(135deg,#f8f7ff,#fff 70%)}
+  .device-identity-hero strong{display:block;margin-top:4px;color:#1f2937;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:20px;letter-spacing:.02em;overflow-wrap:anywhere}
+  .device-identity-hero .identity-caption{color:#667085;font-size:11px;font-weight:700;letter-spacing:.06em}
+  .device-profile-card{border:1px solid var(--line);border-radius:11px;padding:13px;background:#fbfcfe}
+  .device-profile-card strong{color:#344054}
+  .device-profile-card .detail-grid{gap:13px}
+  .device-profile-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .device-frp-note{margin:11px 0 0;color:var(--muted);font-size:11px}
+  @media(max-width:760px){.drawer.device-profile-wide{width:100%}.device-identity-hero{grid-template-columns:1fr}.device-identity-hero .btn{justify-self:start}}
+</style>
+</head>
+<body>
+  <section id="authGate" class="login-gate"><div class="login-card"><div class="brand"><div class="brand-mark">TY</div><div class="brand-copy"><strong>TY Gateway</strong><span>Control Plane</span></div></div><h1>欢迎回来</h1><p>登录控制平面，管理设备、订阅和策略配置。</p><label class="field"><span class="field-label">管理员密码</span><input id="tokenInput" type="password" autocomplete="current-password" placeholder="输入管理员密码"></label><button id="loginBtn" class="btn" style="width:100%;margin-top:16px">进入控制台 <span>→</span></button><div class="login-note"><span>◆</span><span>敏感订阅地址只在中央服务器加密保存，客户和设备端不会显示原始 URL；管理员可在详情中主动查看。</span></div></div></section>
+  <div id="app" class="app-shell hidden"><aside class="sidebar"><div class="brand"><div class="brand-mark">TY</div><div class="brand-copy"><strong>TY Gateway</strong><span>Control Plane</span></div></div><div class="nav-label">Workspace</div><nav class="nav"><button class="nav-btn active" data-page="overview"><span class="nav-icon">⌂</span>总览</button><button class="nav-btn" data-page="devices"><span class="nav-icon">▣</span>设备中心</button><button class="nav-btn" data-page="subscriptions"><span class="nav-icon">⌁</span>订阅管理</button><button class="nav-btn" data-page="rules"><span class="nav-icon">≡</span>规则中心</button><button class="nav-btn" data-page="settings"><span class="nav-icon">⚙</span>系统设置</button></nav><div class="sidebar-spacer"></div><div class="env-card"><div class="eyebrow">Environment</div><div class="env-row"><span>控制平面</span><span>Production</span></div><div class="env-row"><span>Endpoint</span><span>oec.188811.xyz</span></div></div></aside><main class="main"><header class="topbar"><div class="crumb">TY Gateway <span style="margin:0 7px;color:#c5cad5">/</span> <strong id="crumbText">总览</strong></div><div class="top-actions"><div class="connection"><i class="dot"></i><span id="syncText">已连接</span></div><button id="topRefresh" class="btn ghost small">↻ 同步</button><div class="avatar">TY</div></div></header><div class="content">
+    <section id="page-overview" class="page active"><div class="page-head"><div><div class="eyebrow">Overview</div><h1>控制平面概览</h1><p>查看最近一次同步的设备状态与配置概况。</p></div><div class="head-actions"><button id="overviewRefresh" class="btn secondary">↻ 刷新数据</button></div></div><div class="metric-grid"><article class="metric"><div class="metric-top"><span class="eyebrow">Devices online</span><span class="metric-icon">⌁</span></div><div id="metricOnline" class="metric-value">—</div><div class="metric-foot good" id="metricOnlineFoot">等待同步</div></article><article class="metric"><div class="metric-top"><span class="eyebrow">Total devices</span><span class="metric-icon">▣</span></div><div id="metricTotal" class="metric-value">—</div><div class="metric-foot" id="metricTotalFoot">已登记设备</div></article><article class="metric"><div class="metric-top"><span class="eyebrow">Subscriptions</span><span class="metric-icon">⌁</span></div><div id="metricSubs" class="metric-value">—</div><div class="metric-foot" id="metricSubsFoot">等待同步</div></article><article class="metric"><div class="metric-top"><span class="eyebrow">Config readiness</span><span class="metric-icon">✓</span></div><div id="metricReady" class="metric-value">—</div><div class="metric-foot" id="metricReadyFoot">已启用设备比例</div></article></div><div class="grid-2"><section class="panel"><div class="panel-head"><div><h2>设备动态</h2><p>最近接入和心跳状态</p></div><button class="btn ghost small" data-page-jump="devices">查看全部 →</button></div><div id="activityList" class="panel-body"><div class="empty"><div><div class="empty-icon">⌁</div><strong>正在同步设备数据</strong><span>稍等片刻，控制平面会显示最新状态。</span></div></div></div></section><section class="panel"><div class="panel-head"><div><h2>系统健康</h2><p>控制面服务与配置准备度</p></div><span id="healthBadge" class="badge gray">待检查</span></div><div class="panel-body status-overview"><div><div class="status-line"><div class="label"><i class="dot" style="color:var(--green)"></i>控制平面 API</div><div id="healthValue" class="value">待检查</div></div><div class="progress"><i style="width:100%"></i></div></div><div><div class="status-line"><div class="label"><i class="dot" style="color:var(--brand)"></i>策略配置</div><div class="value" id="profileStatus">待检查</div></div><div class="progress"><i id="profileProgress" style="width:0%"></i></div></div><div><div class="status-line"><div class="label"><i class="dot" style="color:var(--amber)"></i>订阅同步</div><div class="value" id="subscriptionStatus">待检查</div></div><div class="progress"><i id="subscriptionProgress" style="width:0%;background:linear-gradient(90deg,#e7a52e,#f5c96d)"></i></div></div></div></section></div></section>
+    <section id="page-devices" class="page"><div class="page-head"><div><div class="eyebrow">Fleet management</div><h1>设备中心</h1><p>统一查看设备在线状态、版本和配置策略。</p></div><div class="head-actions"><button id="identityLookupBtn" class="btn secondary">身份精确查询</button><button id="devicesRefresh" class="btn secondary">↻ 刷新</button></div></div><section class="panel"><div class="toolbar"><div class="search"><span>⌕</span><input id="deviceSearch" placeholder="搜索编号、设备码、邮箱、备注或 IP"></div><select id="deviceStateFilter" class="select-compact"><option value="">全部状态</option><option value="pending">待配置</option><option value="enabled">已启用</option><option value="disabled">已禁用</option></select><select id="deviceOnlineFilter" class="select-compact"><option value="">全部在线状态</option><option value="online">在线</option><option value="offline">离线</option></select><span id="deviceCountLabel" class="muted" style="margin-left:auto;font-size:12px">—</span></div><div class="table-wrap"><table><thead><tr><th>设备</th><th>连接状态</th><th>配置策略</th><th>版本</th><th>最后心跳</th><th></th></tr></thead><tbody id="deviceRows"></tbody></table></div><div id="deviceEmpty" class="empty hidden"><div><div class="empty-icon">▣</div><strong>还没有设备</strong><span>设备首次注册后会自动出现在这里。</span></div></div></section></section>
+    <section id="page-subscriptions" class="page"><div class="page-head"><div><div class="eyebrow">Secure sources</div><h1>订阅管理</h1><p>原始地址在中央端加密保存；完整节点解析由绑定设备上的 dae 完成。删除只影响 TY Gateway，不会删除 V2Board 订阅。</p></div><div class="head-actions"><button id="addSubscriptionBtn" class="btn">＋ 添加订阅</button></div></div><div class="metric-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:18px"><article class="metric"><div class="metric-top"><span class="eyebrow">Active sources</span><span class="metric-icon">✓</span></div><div id="subActiveMetric" class="metric-value">—</div><div class="metric-foot good">可供设备使用</div></article><article class="metric"><div class="metric-top"><span class="eyebrow">Nodes available</span><span class="metric-icon">⌁</span></div><div id="subNodesMetric" class="metric-value">—</div><div class="metric-foot">设备 dae 上报的解析总数</div></article><article class="metric"><div class="metric-top"><span class="eyebrow">Security</span><span class="metric-icon">◆</span></div><div class="metric-value" style="font-size:23px">AES-256</div><div class="metric-foot good">服务端加密保存</div></article></div><section class="panel"><div class="panel-head"><div><h2>订阅源</h2><p>列表不会返回或展示原始订阅 URL。同步会排队请求绑定设备用 dae 解析，完成后自动回报节点总数。</p></div><button id="subscriptionRefresh" class="btn ghost small">↻ 刷新状态</button></div><div class="table-wrap"><table><thead><tr><th>订阅</th><th>来源</th><th>状态</th><th>dae 解析总数</th><th>上次同步</th><th></th></tr></thead><tbody id="subscriptionRows"></tbody></table></div><div id="subscriptionEmpty" class="empty hidden"><div><div class="empty-icon">⌁</div><strong>还没有订阅源</strong><span>添加后，原始地址只会在服务器端加密保存。</span></div></div></section></section>
+    <section id="page-rules" class="page"><div class="page-head"><div><div class="eyebrow">Policy engine</div><h1>规则中心</h1><p>配置 Profile、用户规则，并解释每一次域名策略决策。</p></div><div class="head-actions"><button id="addRuleBtn" class="btn">＋ 新建规则</button></div></div><div class="rule-layout"><div><section class="panel" style="margin-bottom:18px"><div class="panel-head"><div><h2>策略 Profile</h2><p>分类与节点策略解耦，系统保护规则优先，用户规则覆盖基础策略。</p></div></div><div class="panel-body"><div class="profile-grid"><article class="profile-card selected"><h3>GFW 精准代理</h3><p>国内直连、GFW 命中代理，其余流量保持 DIRECT。</p><span class="profile-state">默认模板 · 内置示例规则</span></article><article class="profile-card"><h3>Blackmatrix7 常用规则</h3><p>China、Google、OpenAI、GitHub、Netflix 等分类策略。</p><span class="profile-state">分类框架 · 尚未接入完整规则库</span></article></div></div></section><section class="panel"><div class="panel-head"><div><h2>用户规则</h2><p>用户规则覆盖基础 Profile，优先级可预测。</p></div><span id="ruleCountLabel" class="muted">—</span></div><div class="table-wrap"><table><thead><tr><th>匹配条件</th><th>策略</th><th>来源</th><th>优先级</th><th></th></tr></thead><tbody id="ruleRows"></tbody></table></div><div id="ruleEmpty" class="empty hidden"><div><div class="empty-icon">≡</div><strong>还没有用户规则</strong><span>新增一条域名规则后，它会覆盖基础 Profile。</span></div></div></section></div><section class="panel"><div class="panel-head"><div><h2>规则解释器</h2><p>模拟一次请求，查看最终命中来源。</p></div></div><div class="panel-body"><div class="form-grid"><label class="field full"><span class="field-label">目标设备</span><select id="explainDevice"></select></label><label class="field full"><span class="field-label">域名</span><input id="explainDomain" placeholder="例如 openai.com"></label><label class="field"><span class="field-label">来源 IP</span><input id="explainIP" placeholder="可选"></label><label class="field"><span class="field-label">国家/地区</span><input id="explainCountry" placeholder="例如 CN"></label></div><div class="check-row" style="margin:16px 0"><label><input id="explainLAN" type="checkbox"> LAN 流量</label><label><input id="explainManagement" type="checkbox"> 系统管理流量</label></div><button id="explainBtn" class="btn small">解释最终策略</button><div id="explainResult" class="explain-result" style="margin-top:16px">填写设备和域名后开始解释。</div></div></section></div></section>
+    <section id="page-settings" class="page"><div class="page-head"><div><div class="eyebrow">Workspace settings</div><h1>系统设置</h1><p>查看控制平面运行环境和安全边界。</p></div></div><div class="grid-2" style="margin-top:0"><section class="panel"><div class="panel-head"><div><h2>安全状态</h2><p>当前管理会话和敏感数据策略</p></div></div><div class="panel-body"><div class="security-list"><div class="security-row"><div><strong>管理员会话</strong><span>凭据仅保留在页面内存，刷新后需重新登录</span></div><span class="badge green">已认证</span></div><div class="security-row"><div><strong>订阅凭据</strong><span>服务端 AES-GCM 加密，接口不返回原始 URL</span></div><span class="badge green">已保护</span></div><div class="security-row"><div><strong>设备认证</strong><span>设备使用独立 Secret + HMAC，MAC 仅作标识</span></div><span class="badge green">已保护</span></div></div><button id="logoutBtn" class="btn secondary" style="margin-top:16px">退出当前会话</button></div></section><section class="panel"><div class="panel-head"><div><h2>服务信息</h2><p>部署在 aaPanel 现有 Nginx 后方</p></div></div><div class="panel-body"><div class="detail-grid"><div><span class="detail-label">Public endpoint</span><span class="detail-value">https://oec.188811.xyz</span></div><div><span class="detail-label">API base</span><span class="detail-value">/api/v1</span></div><div><span class="detail-label">Storage</span><span class="detail-value">MySQL / MariaDB</span></div><div><span class="detail-label">Service</span><span class="detail-value">ty-cloud.service</span></div><div><span class="detail-label">Listener</span><span class="detail-value">127.0.0.1:9080</span></div><div><span class="detail-label">OEC integration</span><span class="detail-value">等待硬件到货</span></div></div></div></section></div></section>
+  </div></main></div>
+  <div id="drawerRoot" class="drawer-backdrop hidden"><aside class="drawer"><div class="drawer-head"><div><div class="eyebrow">Device detail</div><h2 id="drawerTitle">设备详情</h2><span id="drawerSubtitle" class="muted">—</span></div><button id="closeDrawer" class="close" aria-label="关闭设备详情">×</button></div><div id="drawerBody"></div></aside></div><div id="modalRoot" class="modal-backdrop hidden"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-head"><h2 id="modalTitle">新建</h2><button id="closeModal" class="close" aria-label="关闭对话框">×</button></div><div id="modalBody" class="modal-body"></div><div id="modalFoot" class="modal-foot"></div></div></div><div id="toastStack" class="toast-stack" role="status" aria-live="polite"></div>
+  <script>
+    const $=id=>document.getElementById(id);const state={token:'',devices:[],subscriptions:[],rules:[],catalog:null,selectedDevice:null};const pageNames={overview:'总览',devices:'设备中心',subscriptions:'订阅管理',rules:'规则中心',settings:'系统设置'};const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const fmtTime=value=>{if(!value)return'暂无记录';const d=new Date(value);return Number.isNaN(d.getTime())?String(value):d.toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})};const pad=value=>String(value??'').padStart(3,'0');const stateLabel=value=>({pending:'待配置',enabled:'已启用',disabled:'已禁用'}[value]||value||'未知');const stateBadge=value=>{const cls=value==='enabled'?'green':value==='disabled'?'red':'amber';return`<span class="badge ${cls}">${esc(stateLabel(value))}</span>`};const onlineBadge=value=>value?'<span class="badge green">在线</span>':'<span class="badge gray">离线</span>';
+    function toast(title,message,bad=false){const node=document.createElement('div');node.className=`toast ${bad?'bad':'good'}`;node.innerHTML=`<div>${bad?'!':'✓'}</div><div><strong>${esc(title)}</strong><span>${esc(message)}</span></div>`;$('toastStack').appendChild(node);setTimeout(()=>node.remove(),4200)}function headers(){return{'X-TY-Admin-Token':state.token,'Content-Type':'application/json'}}async function api(path,options={}){const requestToken=state.token;const response=await fetch('/api/v1'+path,{...options,signal:AbortSignal.timeout(15000),headers:{...headers(),...(options.headers||{})}});let body={};try{body=await response.json()}catch(_){}if(requestToken!==state.token)throw new Error('登录状态已改变');if(response.status===401){showAuth();throw new Error('管理员 Token 无效或已失效')}if(!response.ok)throw new Error(body.error||`请求失败（${response.status}）`);return body}function showAuth(){$('app').classList.add('hidden');$('authGate').classList.remove('hidden');$('tokenInput').value='';state.token='';sessionStorage.removeItem('ty_admin_token');state.devices=[];state.subscriptions=[];state.rules=[];state.catalog=null;closeDrawer();closeModal();renderOverview();renderDevices();renderSubscriptions();renderRules();$('explainResult').textContent='';$('explainDomain').value='';$('deviceSearch').value=''}function enterApp(){$('authGate').classList.add('hidden');$('app').classList.remove('hidden')}
+    function navigate(page){document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id===`page-${page}`));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.page===page));$('crumbText').textContent=pageNames[page]||'总览';history.replaceState(null,'',`#${page}`);if(page==='devices')renderDevices();if(page==='subscriptions')renderSubscriptions();if(page==='rules')renderRules()}
+    function renderOverview(){const total=state.devices.length,online=state.devices.filter(d=>d.online).length,enabled=state.devices.filter(d=>d.state==='enabled').length,subs=state.subscriptions.length,activeSubs=state.subscriptions.filter(s=>s.status==='ok').length,nodes=state.subscriptions.reduce((sum,s)=>sum+Number(s.node_count||0),0);$('metricOnline').textContent=total?`${online}/${total}`:'0';$('metricOnlineFoot').textContent=total?`${Math.round(online/total*100)}% 设备在线`:'等待设备接入';$('metricTotal').textContent=total;$('metricTotalFoot').textContent=total?`${state.devices.filter(d=>d.state==='pending').length} 台待配置`:'尚未登记设备';$('metricSubs').textContent=subs;$('metricSubsFoot').textContent=subs?`${activeSubs} 个同步正常 · ${nodes} 个节点`:'尚未添加订阅';$('metricReady').textContent=total?`${Math.round(enabled/total*100)}%`:'—';$('metricReadyFoot').textContent=total?`${enabled} 台已启用`:'等待设备配置';$('profileStatus').textContent=total?`${enabled}/${total} 已启用`:'待设备接入';$('profileProgress').style.width=total?`${enabled/total*100}%`:'0%';$('subscriptionStatus').textContent=subs?`${activeSubs}/${subs} 正常`:'未配置';$('subscriptionProgress').style.width=subs?`${Math.round(activeSubs/subs*100)}%`:'0%';const recent=[...state.devices].sort((a,b)=>new Date(b.last_seen||b.updated_at||0)-new Date(a.last_seen||a.updated_at||0)).slice(0,5);$('activityList').innerHTML=recent.length?`<div class="activity">${recent.map(d=>`<div class="activity-item"><div class="activity-icon">${d.online?'↗':'·'}</div><div class="activity-copy"><strong>${esc(d.note||`设备 ${pad(d.device_number)}`)} <span class="mono">${esc(d.serial)}</span></strong><span>${d.online?'正在发送心跳':'最后在线'} · ${fmtTime(d.last_seen||d.updated_at)}</span></div>${onlineBadge(d.online)}</div>`).join('')}</div>`:`<div class="empty"><div><div class="empty-icon">⌁</div><strong>还没有设备动态</strong><span>设备接入后，最新心跳会显示在这里。</span></div></div>`}
+    function renderDevices(){const query=$('deviceSearch').value.trim().toLowerCase(),st=$('deviceStateFilter').value,on=$('deviceOnlineFilter').value;const list=state.devices.filter(d=>{const hay=[d.device_number,d.serial,d.email,d.name,d.note,d.last_ip].join(' ').toLowerCase();return(!query||hay.includes(query))&&(!st||d.state===st)&&(!on||(on==='online'?d.online:!d.online))});$('deviceCountLabel').textContent=`${list.length} / ${state.devices.length} 台设备`;$('deviceRows').innerHTML=list.map(d=>`<tr><td><div class="primary-cell"><strong>#${pad(d.device_number)} ${esc(d.name||'未命名设备')}</strong><span class="mono">${esc(d.serial)} · ${esc(d.last_ip||'IP 未上报')}</span></div></td><td>${onlineBadge(d.online)}<div class="muted" style="margin-top:4px;font-size:11px">${stateBadge(d.state)}</div></td><td><span style="color:#344054;font-weight:650">${esc(d.profile||'gfw_precise')}</span><div class="muted" style="font-size:11px;margin-top:3px">配置 v${esc(d.config_version||0)}</div></td><td><div class="primary-cell"><strong>${esc(d.agent_version||'—')}</strong><span>${esc(d.firmware_version||'固件未知')}</span></div></td><td><span class="muted">${fmtTime(d.last_seen)}</span></td><td><button class="btn secondary small" data-device="${esc(d.id)}">查看详情</button></td></tr>`).join('');$('deviceEmpty').classList.toggle('hidden',list.length>0);if(!list.length)$('deviceRows').innerHTML=''}
+    function renderSubscriptions(){
+      const active=state.subscriptions.filter(s=>s.status==='ok').length;
+      const nodes=state.subscriptions.reduce((sum,s)=>sum+Number(s.node_count||0),0);
+      $('subActiveMetric').textContent=active;
+      $('subNodesMetric').textContent=nodes;
+      $('subscriptionRows').innerHTML=state.subscriptions.map(s=>{
+        const bound=state.devices.find(d=>d.subscription_id===s.id);
+        const binding=bound?`绑定设备 #${pad(bound.device_number)} · ${esc(bound.name||bound.serial)}`:'当前未绑定设备';
+        return `<tr><td><div class="primary-cell"><strong>${esc(s.name)}</strong><span>${binding} · 更新于 ${fmtTime(s.updated_at)}</span></div></td><td><span class="badge gray">${esc(s.provider||'custom')}</span></td><td>${s.status==='ok'?'<span class="badge green">dae 已同步':s.status==='error'?'<span class="badge red">dae 解析失败':s.status==='pending'?'<span class="badge amber">等待设备 dae': '<span class="badge gray">未同步'} </span></td><td><strong>${esc(s.node_count||0)}</strong> <span class="muted">nodes</span></td><td class="muted">${fmtTime(s.last_refresh)}</td><td><div class="head-actions"><button class="btn secondary small" data-refresh-sub="${esc(s.id)}" ${bound?'':'disabled title="请先绑定设备"'}>↻ 请求 dae 同步</button><button class="btn danger small" data-delete-sub="${esc(s.id)}">删除</button></div></td></tr>`;
+      }).join('');
+      $('subscriptionEmpty').classList.toggle('hidden',state.subscriptions.length>0);
+      if(!state.subscriptions.length)$('subscriptionRows').innerHTML='';
+    }
+
+    document.body.addEventListener('click',async event=>{
+      const button=event.target.closest('[data-delete-sub]');
+      if(!button)return;
+      const id=button.dataset.deleteSub;
+      const sub=state.subscriptions.find(item=>item.id===id);
+      if(!sub)return;
+      const bound=state.devices.find(device=>device.subscription_id===id);
+      const target=bound?`绑定设备：#${pad(bound.device_number)} ${bound.name||bound.serial}（${bound.serial}）`:'当前没有绑定设备';
+      const message=`确定从 TY Gateway 删除订阅“${sub.name}”？\n\n${target}\n\n将删除本系统保存的加密订阅地址和节点记录，并解除设备绑定、清除节点偏好。设备下次联系云端后会移除本地订阅；离线设备稍后生效。\n\n不会删除或修改 V2Board 中的订阅。此操作无法撤销。`;
+      if(!confirm(message))return;
+      button.disabled=true;
+      try{
+        const result=await api('/admin/subscriptions/delete',{method:'POST',body:JSON.stringify({id})});
+        await loadState(true);
+        const detached=Number(result.detached_devices||0);
+        toast('订阅已从 TY Gateway 删除',detached?`已解除 ${detached} 台设备的绑定；设备下次同步后生效。V2Board 未改动。`:'无绑定设备；V2Board 未改动。');
+      }catch(error){
+        toast('删除失败',error.message,true);
+      }finally{
+        button.disabled=false;
+      }
+    });
+    function renderRules(){$('ruleCountLabel').textContent=`${state.rules.length} 条规则`;$('ruleRows').innerHTML=state.rules.map(r=>`<tr><td><div class="primary-cell"><strong>${esc(r.match_value)}</strong><span>${esc(r.match_type)} · ${esc(r.category||'用户自定义')}</span></div></td><td><span class="badge ${r.action==='BLOCK'?'red':r.action==='DIRECT'?'green':'amber'}">${esc(r.action)}</span></td><td><span class="muted">${esc(r.source||'user')}</span></td><td><span class="mono">${esc(r.priority||0)}</span></td><td><button class="btn ghost small" data-delete-rule="${esc(r.id)}">删除</button></td></tr>`).join('');$('ruleEmpty').classList.toggle('hidden',state.rules.length>0);if(!state.rules.length)$('ruleRows').innerHTML='';$('explainDevice').innerHTML=state.devices.length?state.devices.map(d=>`<option value="${esc(d.id)}">#${pad(d.device_number)} · ${esc(d.serial)}${d.note?` · ${esc(d.note)}`:''}</option>`).join(''):'<option value="">暂无设备</option>'}
+    async function loadState(silent=false){if(!state.token)return;$('syncText').textContent='同步中…';$('healthBadge').textContent='检查中';try{const[devices,subscriptions,rules,catalog]=await Promise.all([api('/admin/devices'),api('/admin/subscriptions'),api('/admin/rules'),api('/admin/provider-catalog')]);state.devices=devices.devices||[];state.subscriptions=subscriptions.subscriptions||[];state.rules=rules.rules||[];state.catalog=catalog;$('healthBadge').textContent='接口可用';$('healthBadge').className='badge green';$('healthValue').textContent='请求成功';renderOverview();renderDevices();renderSubscriptions();renderRules();$('syncText').textContent=`已同步 ${new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}`;if(!silent)toast('数据已更新',`已同步 ${state.devices.length} 台设备和 ${state.subscriptions.length} 个订阅源`)}catch(error){$('syncText').textContent='同步失败';$('healthBadge').textContent='数据未更新';$('healthBadge').className='badge red';$('healthValue').textContent='检查失败';toast('同步失败',error.message,true)}}
+    function openDrawer(id){const d=state.devices.find(x=>x.id===id);if(!d)return;state.selectedDevice=d;$('drawerTitle').textContent=`#${pad(d.device_number)} ${d.name||'未命名设备'}`;$('drawerSubtitle').textContent=`${d.serial} · ${d.online?'在线':'离线'}`;$('drawerBody').innerHTML=`<div class="drawer-section"><div style="display:flex;gap:8px;align-items:center">${onlineBadge(d.online)}${stateBadge(d.state)}</div><div class="detail-grid" style="margin-top:18px"><div><span class="detail-label">Serial</span><span class="detail-value mono">${esc(d.serial)}</span></div><div><span class="detail-label">设备编号</span><span class="detail-value">#${pad(d.device_number)}</span></div><div><span class="detail-label">最后 IP</span><span class="detail-value">${esc(d.last_ip||'未上报')}</span></div><div><span class="detail-label">最后心跳</span><span class="detail-value">${fmtTime(d.last_seen)}</span></div><div><span class="detail-label">固件版本</span><span class="detail-value">${esc(d.firmware_version||'—')}</span></div><div><span class="detail-label">Agent 版本</span><span class="detail-value">${esc(d.agent_version||'—')}</span></div><div><span class="detail-label">内核版本</span><span class="detail-value">${esc(d.kernel_version||'—')}</span></div><div><span class="detail-label">硬件版本</span><span class="detail-value">${esc(d.hardware_version||'—')}</span></div></div></div><div class="drawer-section"><h3>配置与状态</h3><div class="form-grid"><label class="field"><span class="field-label">设备状态</span><select id="drawerState"><option value="pending">待配置</option><option value="enabled">已启用</option><option value="disabled">已禁用</option></select></label><label class="field"><span class="field-label">规则 Profile</span><select id="drawerProfile"><option value="gfw_precise">GFW 精准代理（旧版）</option></select></label><label class="field full"><span class="field-label">管理员备注（客户不可见）</span><input id="drawerNote" value="${esc(d.note||'')}" placeholder="例如：使用人、办公室或家庭场景"></label></div><div class="drawer-actions"><button id="saveDeviceBtn" class="btn small">保存设备设置</button></div></div><div class="drawer-section"><h3>客户身份与订阅</h3><div class="form-grid"><label class="field full"><span class="field-label">设备名称（客户可见）</span><input id="identityName" maxlength="128" value="${esc(d.name||'')}"></label><label class="field full"><span class="field-label">用户邮箱（唯一）</span><input id="identityEmail" type="email" value="${esc(d.email||'')}"></label><label class="field full"><span class="field-label">独占订阅</span><select id="identitySubscription"><option value="">暂不绑定</option>${state.subscriptions.map(s=>`<option value="${esc(s.id)}" ${s.id===d.subscription_id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></label></div><div class="drawer-actions"><button id="saveIdentityBtn" class="btn small">保存身份绑定</button></div></div><div class="drawer-section"><h3>基本命令</h3><p class="muted" style="font-size:12px;margin:0 0 13px">命令会进入队列，由设备 Agent 下一次拉取。</p><div class="drawer-actions"><button class="btn secondary small" data-command="reload_config">重新获取配置</button><button class="btn secondary small" data-command="report_status">请求状态上报</button></div></div>`;$('drawerState').value=d.state||'pending';$('drawerProfile').value=d.profile||'gfw_precise';$('drawerRoot').classList.remove('hidden')}
+    function closeDrawer(){$('drawerRoot').classList.add('hidden');$('drawerBody').replaceChildren();state.selectedDevice=null}function openModal(title,body,footer){$('modalTitle').textContent=title;$('modalBody').innerHTML=body;$('modalFoot').innerHTML=footer;$('modalRoot').classList.remove('hidden')}function closeModal(){$('modalRoot').classList.add('hidden');$('modalBody').replaceChildren();$('modalFoot').replaceChildren()}function openSubscriptionModal(){openModal('添加订阅源',`<div class="notice"><span>◆</span><span>原始订阅 URL 会在请求后立即由服务器加密保存。列表和设备接口不会返回原始地址；管理员可单独查看并留下审计记录。</span></div><div class="form-grid"><label class="field full"><span class="field-label">名称</span><input id="newSubName" placeholder="例如：朋友组 · 主订阅"></label><label class="field"><span class="field-label">Provider</span><input id="newSubProvider" placeholder="v2board"></label><label class="field"><span class="field-label">订阅 URL</span><input id="newSubURL" type="url" placeholder="https://…" autocomplete="off"></label></div>`,`<button class="btn secondary" data-close-modal>取消</button><button class="btn" id="createSubConfirm">保存订阅</button>`)}function openRuleModal(){openModal('新建用户规则',`<div class="form-grid"><label class="field"><span class="field-label">匹配类型</span><select id="newRuleType"><option value="domain">域名</option><option value="domain_suffix">域名后缀</option><option value="cidr">IP/CIDR</option></select></label><label class="field"><span class="field-label">策略</span><select id="newRuleAction"><option value="DIRECT">DIRECT · 直连</option><option value="PROXY">PROXY · 代理</option><option value="AUTO">AUTO · 节点组</option><option value="BLOCK">BLOCK · 阻断</option></select></label><label class="field full"><span class="field-label">匹配值</span><input id="newRuleValue" placeholder="例如 openai.com"></label><label class="field"><span class="field-label">优先级</span><input id="newRulePriority" type="number" value="100" min="1" max="10000"></label><div class="field"><span class="field-label">作用范围</span><span class="field-hint" style="padding-top:9px">全局用户规则 · 覆盖基础 Profile</span></div></div>`,`<button class="btn secondary" data-close-modal>取消</button><button class="btn" id="createRuleConfirm">创建规则</button>`)}
+    document.querySelectorAll('[data-page],[data-page-jump]').forEach(node=>node.addEventListener('click',()=>navigate(node.dataset.page||node.dataset.pageJump)));$('loginBtn').addEventListener('click',async()=>{const token=$('tokenInput').value.trim();if(!token)return toast('需要管理员 Token','请输入控制平面管理员 Token',true);state.token=token;$('loginBtn').disabled=true;try{await api('/admin/devices');$('tokenInput').value='';enterApp();await loadState()}catch(e){toast('登录失败',e.message,true)}finally{$('loginBtn').disabled=false}});$('tokenInput').addEventListener('keydown',event=>{if(event.key==='Enter')$('loginBtn').click()});$('topRefresh').addEventListener('click',()=>loadState());$('overviewRefresh').addEventListener('click',()=>loadState());$('devicesRefresh').addEventListener('click',()=>loadState());$('subscriptionRefresh').addEventListener('click',()=>loadState());$('deviceSearch').addEventListener('input',renderDevices);$('deviceStateFilter').addEventListener('change',renderDevices);$('deviceOnlineFilter').addEventListener('change',renderDevices);$('closeDrawer').addEventListener('click',closeDrawer);$('drawerRoot').addEventListener('click',event=>{if(event.target===$('drawerRoot'))closeDrawer()});$('closeModal').addEventListener('click',closeModal);$('modalRoot').addEventListener('click',event=>{if(event.target===$('modalRoot'))closeModal()});$('addSubscriptionBtn').addEventListener('click',openSubscriptionModal);$('addRuleBtn').addEventListener('click',openRuleModal);$('logoutBtn').addEventListener('click',()=>{closeDrawer();showAuth()});
+    document.body.addEventListener('click',async event=>{const deviceButton=event.target.closest('[data-device]');if(deviceButton)openDrawer(deviceButton.dataset.device);const subButton=event.target.closest('[data-refresh-sub]');if(subButton){try{await api('/admin/subscriptions/refresh',{method:'POST',body:JSON.stringify({id:subButton.dataset.refreshSub})});toast('已请求 dae 同步','任务已排队，设备在线时会重新解析；完成后这里显示实际节点总数。');await loadState(true)}catch(e){toast('同步请求失败',e.message,true)}}const deleteButton=event.target.closest('[data-delete-rule]');if(deleteButton){if(!confirm('确定删除这条用户规则吗？'))return;try{await api('/admin/rules/delete',{method:'POST',body:JSON.stringify({id:deleteButton.dataset.deleteRule})});toast('规则已删除','新的策略将在下一次编译时生效');await loadState(true)}catch(e){toast('删除失败',e.message,true)}}const commandButton=event.target.closest('[data-command]');if(commandButton&&state.selectedDevice){try{await api('/admin/devices/command',{method:'POST',body:JSON.stringify({device_id:state.selectedDevice.id,command:commandButton.dataset.command})});toast('命令已排队','等待支持命令轮询的 Agent 拉取')}catch(e){toast('命令发送失败',e.message,true)}}if(event.target.matches('[data-close-modal]'))closeModal()});document.body.addEventListener('click',async event=>{if(event.target.id==='createSubConfirm'){const name=$('newSubName').value.trim(),provider=$('newSubProvider').value.trim(),url=$('newSubURL').value.trim();if(!name||!url)return toast('信息不完整','请填写名称和订阅 URL',true);try{await api('/admin/subscriptions',{method:'POST',body:JSON.stringify({name,provider,url})});closeModal();toast('订阅已保存','原始 URL 已在服务器端加密保存');await loadState(true)}catch(e){toast('保存失败',e.message,true)}}if(event.target.id==='createRuleConfirm'){const value=$('newRuleValue').value.trim();if(!value)return toast('信息不完整','请填写匹配值',true);try{await api('/admin/rules',{method:'POST',body:JSON.stringify({match_type:$('newRuleType').value,match_value:value,action:$('newRuleAction').value,priority:Number($('newRulePriority').value||100)})});closeModal();toast('规则已创建','用户规则将覆盖基础 Profile');await loadState(true)}catch(e){toast('创建失败',e.message,true)}}if(event.target.id==='saveDeviceBtn'&&state.selectedDevice){try{await api('/admin/devices/update',{method:'POST',body:JSON.stringify({id:state.selectedDevice.id,state:$('drawerState').value,profile:$('drawerProfile').value,note:$('drawerNote').value.trim()})});closeDrawer();toast('设备设置已保存','配置版本已更新');await loadState(true)}catch(e){toast('保存失败',e.message,true)}}});$('explainBtn').addEventListener('click',async()=>{const device_id=$('explainDevice').value,domain=$('explainDomain').value.trim();if(!device_id||!domain)return toast('无法解释','请选择设备并填写域名',true);$('explainResult').textContent='正在计算最终策略…';try{const result=await api('/admin/rules/explain',{method:'POST',body:JSON.stringify({device_id,domain,source_ip:$('explainIP').value.trim(),country_code:$('explainCountry').value.trim(),is_lan:$('explainLAN').checked,is_management:$('explainManagement').checked})});$('explainResult').textContent=JSON.stringify(result,null,2)}catch(e){$('explainResult').textContent=e.message;toast('解释失败',e.message,true)}});sessionStorage.removeItem('ty_admin_token');document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeDrawer()}});const initialPage=location.hash.slice(1);if(pageNames[initialPage])navigate(initialPage);if(state.token){enterApp();loadState(true)}
+
+    $('identityLookupBtn').addEventListener('click',()=>openModal('身份精确查询','<label class="field"><span>查询类型</span><select id="lookupKind"><option value="serial">设备码</option><option value="email">用户邮箱</option><option value="subscription">完整订阅地址</option></select></label><label class="field"><span>查询内容</span><input id="lookupValue" autocomplete="off"></label>','<button id="lookupConfirm" class="btn">查询</button>'));
+    document.body.addEventListener('click',async e=>{
+      if(e.target.id==='saveIdentityBtn' && state.selectedDevice){
+        e.target.disabled=true;
+        try {await api('/admin/devices/identity',{method:'POST',body:JSON.stringify({id:state.selectedDevice.id,name:$('identityName').value,email:$('identityEmail').value,subscription_id:$('identitySubscription').value})});closeDrawer();await loadState(true);toast('身份绑定已保存','设备名称与管理员备注分别保存');}
+        catch(err){toast('保存失败',err.message,true)} finally{e.target.disabled=false}
+      }
+      if(e.target.id==='lookupConfirm'){
+        e.target.disabled=true;
+        try{const found=await api('/admin/devices/lookup',{method:'POST',body:JSON.stringify({kind:$('lookupKind').value,value:$('lookupValue').value})});closeModal();state.devices=state.devices.filter(d=>d.id!==found.device.id).concat(found.device);openDrawer(found.device.id);}
+        catch(err){toast('查询失败',err.message,true)}finally{e.target.disabled=false}
+      }
+    });
+
+    function addSubscriptionReveal(){
+      const d=state.selectedDevice;
+      const section=[...document.querySelectorAll('#drawerBody .drawer-section')].find(x=>x.querySelector('h3')?.textContent==='客户身份与订阅');
+      if(!section||section.querySelector('#revealSubscriptionBtn'))return;
+      const actions=document.createElement('div');
+      actions.className='drawer-actions';
+      actions.innerHTML=`<button id="revealSubscriptionBtn" class="btn secondary small" ${d?.subscription_id?'':'disabled'}>查看完整订阅地址</button>`;
+      section.appendChild(actions);
+      const field=document.createElement('div');
+      field.className='field full';
+      field.style.marginTop='12px';
+      field.innerHTML='<input id="subscriptionURL" class="mono" type="text" autocomplete="off" readonly hidden><span id="subscriptionURLHint" class="muted">订阅地址仅在管理员主动查看时显示，不会下发设备。</span>';
+      section.appendChild(field);
+      const accessActions=document.createElement('div');
+      accessActions.className='drawer-actions';
+      accessActions.innerHTML='<button id="issueCustomerAccessBtn" class="btn secondary small">生成客户访问凭证</button>';
+      section.appendChild(accessActions);
+      const accessField=document.createElement('div');
+      accessField.className='field full';
+      accessField.style.marginTop='12px';
+      accessField.innerHTML='<input id="customerAccessToken" class="mono" type="text" autocomplete="off" readonly hidden><span id="customerAccessHint" class="muted">凭证只在生成后显示一次；重新生成会立即使旧凭证失效。</span>';
+      section.appendChild(accessField);
+      const recoverySection=document.createElement('div');
+      recoverySection.className='drawer-section';
+      recoverySection.innerHTML='<h3>设备本地密码恢复</h3><p class="muted" style="font-size:12px;margin:0 0 12px">先核验客户身份，再让客户从 OEC 本地页面生成挑战码。签发的授权仅允许该设备重设本地密码，不是通用登录密码。</p><label class="field"><span class="field-label">一次性挑战码</span><input id="recoveryChallenge" class="mono" maxlength="26" autocomplete="off" autocapitalize="characters" placeholder="粘贴设备显示的 26 位恢复挑战码"></label><div class="drawer-actions"><button id="issueRecoveryBtn" class="btn secondary small">签发恢复授权</button></div><label class="field"><span class="field-label">恢复授权码</span><textarea id="recoveryTicket" class="mono" rows="4" readonly hidden></textarea><span id="recoveryHint" class="field-hint">授权码只显示在此处；默认 10 分钟有效，关闭设备详情后自动清除，且设备成功使用后立即失效。</span></label><div class="drawer-actions"><button id="copyRecoveryBtn" class="btn secondary small" hidden>复制授权码</button></div>';
+      $('drawerBody').appendChild(recoverySection);
+    }
+    const openDrawerWithIdentity= openDrawer;
+    openDrawer=function(id){openDrawerWithIdentity(id);addSubscriptionReveal()};
+    document.body.addEventListener('click',async e=>{
+      if(e.target.id==='revealSubscriptionBtn'&&state.selectedDevice?.subscription_id){
+        e.target.disabled=true;
+        try{
+          const target=state.selectedDevice.id, original=$('subscriptionURL');
+          const result=await api('/admin/subscriptions/reveal',{method:'POST',body:JSON.stringify({id:state.selectedDevice.subscription_id})});
+          if(state.selectedDevice?.id!==target || $('subscriptionURL')!==original)return;
+          const input=$('subscriptionURL');
+          input.value=result.url||'';
+          input.hidden=false;
+          $('subscriptionURLHint').textContent='已显示完整地址；离开设备详情后页面会清除。';
+          e.target.textContent='重新查看订阅地址';
+        }catch(err){toast('查看失败',err.message,true)}finally{e.target.disabled=false}
+      }
+      if(e.target.id==='issueCustomerAccessBtn'&&state.selectedDevice){
+        if(!confirm('重新生成后，之前发给客户的访问凭证会立即失效。确定继续吗？'))return;
+        e.target.disabled=true;
+        try{
+          const target=state.selectedDevice.id, original=$('customerAccessToken');
+          const result=await api('/admin/devices/customer-access',{method:'POST',body:JSON.stringify({id:state.selectedDevice.id})});
+          if(state.selectedDevice?.id!==target || $('customerAccessToken')!==original)return;
+          state.selectedDevice=result.device;
+          const input=$('customerAccessToken');
+          input.value=result.access_token||'';
+          input.hidden=false;
+          $('customerAccessHint').textContent='请将此凭证和设备码通过安全方式交给客户；关闭详情后页面会清除。入口：/portal';
+          e.target.textContent='重新生成客户访问凭证';
+          toast('客户凭证已生成','旧凭证已失效，请只发送新凭证');
+        }catch(err){toast('生成失败',err.message,true)}finally{e.target.disabled=false}
+      }
+      if(e.target.id==='issueRecoveryBtn'&&state.selectedDevice){
+        const challenge=$('recoveryChallenge').value.trim().toUpperCase();
+        if(!/^[A-Z2-7]{26}$/.test(challenge)){toast('挑战码格式不正确','请完整粘贴设备本地页面显示的恢复码',true);return}
+        if(!confirm('请确认已核验申请人对这台设备的使用权限。恢复授权仅可用于当前设备和当前挑战码。继续签发？'))return;
+        e.target.disabled=true;
+        try{
+          const target=state.selectedDevice.id;
+          const result=await api('/admin/recovery/issue',{method:'POST',body:JSON.stringify({device_code:state.selectedDevice.serial,challenge})});
+          if(state.selectedDevice?.id!==target||!$('recoveryTicket'))return;
+          $('recoveryTicket').value=result.authorization||'';
+          $('recoveryTicket').hidden=false;
+          $('copyRecoveryBtn').hidden=false;
+          const expiry=result.expires_at?new Date(result.expires_at).toLocaleString('zh-CN',{hour12:false}):'约 10 分钟后';
+          $('recoveryHint').textContent='已签发，有效至 '+expiry+'。请通过安全渠道交给客户，并让客户立即在设备本地页面输入。此授权不是临时登录密码；设备验证后将要求设置新密码，成功使用后立即失效。';
+          toast('恢复授权已签发','审计记录已写入；挑战码使用后不可重放');
+        }catch(err){toast('签发失败',err.message,true)}finally{e.target.disabled=false}
+      }
+      if(e.target.id==='copyRecoveryBtn'){
+        const ticket=$('recoveryTicket')?.value||'';
+        if(!ticket)return;
+        try{await navigator.clipboard.writeText(ticket);toast('已复制','请仅发送给已核验的设备使用人')}
+        catch(_){$('recoveryTicket').focus();$('recoveryTicket').select();toast('无法自动复制','已选中授权码，请手动复制')}
+      }
+    });
+
+    // Replace the legacy browser-held admin token flow with a server-side password session.
+    api=async function(path,options={}){
+      const requestToken=state.token;
+      const response=await fetch('/api/v1'+path,{...options,credentials:'same-origin',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json',...(options.headers||{})}});
+      let body={};try{body=await response.json()}catch(_){}
+      if(requestToken!==state.token)throw new Error('登录状态已改变');
+      if(response.status===401){showAuth();throw new Error('登录已失效，请重新登录')}
+      if(!response.ok)throw new Error(body.error||`请求失败（${response.status}）`);
+      return body;
+    };
+    async function adminPasswordLogin(){
+      const password=$('tokenInput').value;
+      if(!password){toast('需要管理员密码','请输入管理员密码',true);return}
+      const button=$('loginBtn');button.disabled=true;$('tokenInput').value='';
+      try{
+        const response=await fetch('/api/v1/admin/login',{method:'POST',credentials:'same-origin',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});
+        let result={};try{result=await response.json()}catch(_){}
+        if(!response.ok)throw new Error(response.status===429?'尝试次数过多，请稍后再试':response.status===401?'密码不正确':result.error||'登录失败');
+        state.token='cookie-session';enterApp();await loadState(true);
+      }catch(error){state.token='';showAuth();toast('登录失败',error.message,true)}
+      finally{button.disabled=false}
+    }
+    async function adminPasswordLogout(){
+      try{
+        const response=await fetch('/api/v1/admin/logout',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'});
+        if(!response.ok)throw new Error('服务端注销失败，请检查网络后重试');
+        closeDrawer();showAuth();
+      }catch(error){toast('注销失败',error.message,true)}
+    }
+    document.addEventListener('click',event=>{
+      const target=event.target instanceof Element?event.target:null;
+      if(target?.closest('#loginBtn')){event.preventDefault();event.stopImmediatePropagation();void adminPasswordLogin()}
+      else if(target?.closest('#logoutBtn')){event.preventDefault();event.stopImmediatePropagation();void adminPasswordLogout()}
+    },true);
+    fetch('/api/v1/admin/session',{credentials:'same-origin',cache:'no-store'}).then(response=>response.ok?response.json():null).then(result=>{
+      if(result?.authenticated){state.token='cookie-session';enterApp();void loadState(true)}
+    }).catch(()=>{});
+
+    // Admin-only SSH rescue inventory. This shows the reserved FRPS mapping,
+    // not a claim that the FRPC tunnel is currently connected.
+    (function installRescueInventory(){
+      const nav=document.querySelector('.nav');
+      const content=document.querySelector('.content');
+      const settingsPage=document.getElementById('page-settings');
+      if(!nav||!content||!settingsPage)return;
+      const navButton=document.createElement('button');
+      navButton.className='nav-btn';
+      navButton.dataset.page='rescue';
+      navButton.innerHTML='<span class="nav-icon">⌘</span>远程救援';
+      nav.appendChild(navButton);
+      const page=document.createElement('section');
+      page.id='page-rescue';
+      page.className='page';
+      page.innerHTML=`<div class="page-head"><div><div class="eyebrow">SSH rescue</div><h1>远程救援</h1><p>按设备记录关联身份与上海 FRPS 预留端口；不保存 SSH 密码或 FRP Token。</p></div><div class="head-actions"><button id="rescueRefresh" class="btn secondary">刷新</button></div></div><section class="panel"><div class="panel-head"><div><h2>设备救援映射</h2><p id="rescueSummary">读取中…</p></div></div><div class="toolbar"><label class="search"><span>⌕</span><input id="rescueSearch" placeholder="搜索设备码、MAC、用户、邮箱、备注或订阅"></label><span id="rescueCountLabel" class="muted"></span></div><div id="rescueNotice" class="panel-body muted" style="padding-bottom:8px">隧道状态尚未由设备上报；设备在线不代表 FRP 隧道在线。</div><div class="table-wrap"><table><thead><tr><th>设备 / MAC</th><th>用户身份</th><th>订阅 / 备注</th><th>FRPS SSH 入口</th><th>设备状态</th><th>隧道状态</th><th></th></tr></thead><tbody id="rescueRows"></tbody></table></div><div id="rescueEmpty" class="empty hidden"><div><div class="empty-icon">⌘</div><strong>没有匹配的设备</strong><span>调整搜索内容，或先登记设备并绑定身份。</span></div></div></section>`;
+      content.insertBefore(page,settingsPage);
+      pageNames.rescue='远程救援';
+      state.rescue=null;
+      let rescueLoading=false;
+      function renderRescue(){
+        const info=state.rescue;
+        if(!info)return;
+        const query=$('rescueSearch').value.trim().toLowerCase();
+        const devices=(info.devices||[]).filter(d=>[d.device_number,d.serial,d.mac,d.name,d.email,d.note,d.subscription].join(' ').toLowerCase().includes(query));
+        $('rescueSummary').textContent=`旧通道 ${info.host||'未配置'}:${info.control_port||'—'} (${info.remote_port_start}–${info.remote_port_end})${info.auto_frp_host?` · 自动通道 ${info.auto_frp_host}:${info.auto_frp_control_port} (${info.auto_frp_port_start}–${info.auto_frp_port_end})`:''} · ${info.devices?.length||0} 台设备`;
+        $('rescueCountLabel').textContent=`${devices.length} / ${info.devices?.length||0} 台`;
+        $('rescueRows').innerHTML=devices.map(d=>`<tr><td><div class="primary-cell"><strong>#${pad(d.device_number)} ${esc(d.name||'未命名设备')}</strong><span class="mono">${esc(d.serial)} · ${esc(d.mac)}</span></div></td><td><div class="primary-cell"><strong>${esc(d.name||'未绑定用户代号')}</strong><span>${esc(d.email||'未绑定邮箱')}</span></div></td><td><div class="primary-cell"><strong>${esc(d.subscription||'未绑定订阅')}</strong><span>${esc(d.note||'无管理员备注')}</span></div></td><td>${d.port_available&&info.host?`<span class="mono">${esc(info.host)}:${esc(d.remote_port)}</span>`:d.port_available?`<span class="muted">FRPS 地址未配置 · 端口 ${esc(d.remote_port)}</span>`:d.port_assigned?'<span class="badge red">端口不在已登记范围</span>':'<span class="badge gray">未登记 SSH 端口</span>'}</td><td>${d.device_online?'<span class="badge green">在线</span>':'<span class="badge gray">离线</span>'}<div class="muted" style="margin-top:4px;font-size:11px">${fmtTime(d.last_seen)}</div></td><td><span class="badge gray">未验证</span></td><td><button class="btn secondary small" data-device="${esc(d.id)}">详情</button></td></tr>`).join('');
+        [...$('rescueRows').querySelectorAll('tr')].forEach((row,index)=>{const d=devices[index],cell=row.children[3];if(!d||!cell)return;if(d.port_available&&d.frps_host){cell.innerHTML=`<span class="mono">${esc(d.frps_host)}:${esc(d.remote_port)}</span><div class="muted">${d.frp_mode==='per-device'?'自动独立通道':'旧通道'}</div>`}});
+        $('rescueEmpty').classList.toggle('hidden',devices.length>0);
+      }
+      async function refreshRescue(){
+        if(rescueLoading||!state.token)return;
+        rescueLoading=true;
+        $('rescueSummary').textContent='正在同步救援信息…';
+        try{state.rescue=await api('/admin/rescue');renderRescue()}
+        catch(error){$('rescueSummary').textContent='救援信息暂不可用';$('rescueRows').replaceChildren();toast('救援信息加载失败',error.message,true)}
+        finally{rescueLoading=false}
+      }
+      const previousNavigate=navigate;
+      navigate=function(target){previousNavigate(target);if(target==='rescue')void refreshRescue()};
+      navButton.addEventListener('click',()=>navigate('rescue'));
+      $('rescueRefresh').addEventListener('click',()=>void refreshRescue());
+      $('rescueSearch').addEventListener('input',renderRescue);
+      const previousLoadState=loadState;
+      loadState=async function(silent=false){await previousLoadState(silent);if(state.token&&page.classList.contains('active'))await refreshRescue()};
+    })();
+
+    // Bring identity, subscription and rescue metadata into one admin-only
+    // device dossier. Rescue status is an explicit point-in-time SSH probe;
+    // a reserved port alone is never presented as a connected tunnel.
+    (function installUnifiedDeviceProfiles(){
+      const rulePage=document.querySelector('#page-rules');
+      if(rulePage&&!rulePage.querySelector('[data-rule-runtime-warning]')){
+        const notice=document.createElement('div');
+        notice.className='notice';
+        notice.dataset.ruleRuntimeWarning='true';
+        notice.setAttribute('role','status');
+        notice.textContent='当前设备 Agent 仅应用订阅配置；下方规则、临时模式、节点偏好与解释结果尚未接入 dae 实际转发。这里的保存和解释只代表控制平面状态，不会改变设备当前流量。';
+        rulePage.querySelector('.page-head')?.after(notice);
+      }
+      state.rescue=state.rescue||null;
+      const previousShowAuth=showAuth;
+      showAuth=function(){state.rescue=null;previousShowAuth()};
+      const previousLoadState=loadState;
+      loadState=async function(silent=false){
+        await previousLoadState(silent);
+        if(!state.token)return;
+        if(!document.querySelector('#page-rescue.active')){
+          try{state.rescue=await api('/admin/rescue')}
+          catch(_){state.rescue=null}
+        }
+        renderDevices();
+      };
+
+      const previousRenderDevices=renderDevices;
+      renderDevices=function(){
+        previousRenderDevices();
+        const header=document.querySelector('#page-devices thead tr');
+        if(header&&!header.querySelector('[data-rescue-column]')){
+          const th=document.createElement('th');
+          th.dataset.rescueColumn='true';
+          th.textContent='订阅 / FRP SSH';
+          header.insertBefore(th,header.lastElementChild);
+        }
+        const info=state.rescue;
+        document.querySelectorAll('#deviceRows tr').forEach(row=>{
+          const id=row.querySelector('[data-device]')?.dataset.device;
+          const device=state.devices.find(item=>item.id===id);
+          if(!device)return;
+          const sub=state.subscriptions.find(item=>item.id===device.subscription_id);
+          const rescue=info?.devices?.find(item=>item.id===device.id);
+          const host=rescue?.frps_host||info?.host||'';
+          const endpoint=!info?'救援信息暂不可用':rescue?.port_available&&host?`${host}:${rescue.remote_port}`:rescue?.port_available?`端口 ${rescue.remote_port} · FRPS 地址未配置`:rescue?.port_assigned?'端口不在已登记范围':'未登记 SSH 端口';
+          const cell=document.createElement('td');
+          cell.innerHTML=`<div class="primary-cell"><strong>${esc(sub?.name||'未绑定订阅')}</strong><span>${esc(endpoint)}</span></div>`;
+          row.insertBefore(cell,row.lastElementChild);
+        });
+      };
+
+      function statusMarkup(entry){
+        if(!entry)return '<span class="badge gray">无映射资料</span>';
+        if(entry?.tunnel_status==='ssh_ready')return '<span class="badge green">SSH 可达</span>';
+        if(entry?.tunnel_status==='unreachable')return '<span class="badge red">检测未通过</span>';
+        return '<span class="badge gray">尚未检测</span>';
+      }
+      const previousOpenDrawer=openDrawer;
+      openDrawer=function(id){
+        previousOpenDrawer(id);
+        const d=state.selectedDevice;
+        if(!d)return;
+        const drawer=document.querySelector('#drawerRoot .drawer');
+        drawer?.classList.add('device-profile-wide');
+        $('drawerTitle').textContent=`设备档案 · #${pad(d.device_number)}`;
+        $('drawerSubtitle').textContent=`${d.name||'未命名设备'} · ${d.online?'设备在线':'设备离线'} · 设备码 ${d.serial}`;
+        const body=$('drawerBody');
+        const firstSection=body.querySelector('.drawer-section');
+        const detailGrid=firstSection?.querySelector('.detail-grid');
+        if(detailGrid){
+          detailGrid.insertAdjacentHTML('beforeend',`<div><span class="detail-label">MAC 地址</span><span class="detail-value mono">${esc(d.mac||'—')}</span></div><div><span class="detail-label">登记时间</span><span class="detail-value">${fmtTime(d.created_at)}</span></div><div><span class="detail-label">内部记录 ID</span><span class="detail-value mono">${esc(d.id)}</span></div>`);
+        }
+        const hero=document.createElement('div');
+        hero.className='device-identity-hero';
+        hero.innerHTML=`<div><span class="identity-caption">设备码 / SERIAL NUMBER</span><strong>${esc(d.serial)}</strong><div class="muted" style="margin-top:5px">${esc(d.name||'未命名设备')} · #${pad(d.device_number)} · MAC ${esc(d.mac||'—')}</div></div><button class="btn secondary small" data-copy-device-code="${esc(d.serial)}">复制设备码</button>`;
+        body.prepend(hero);
+
+        const identitySection=[...body.querySelectorAll('.drawer-section')].find(section=>section.querySelector('h3')?.textContent==='客户身份与订阅');
+        const subscription=state.subscriptions.find(item=>item.id===d.subscription_id);
+        if(identitySection){
+          identitySection.querySelector('h3').textContent='用户归属与订阅';
+          const form=identitySection.querySelector('.form-grid');
+          const selector=identitySection.querySelector('#identitySubscription');
+          if(selector){
+            selector.closest('label').querySelector('.field-label').textContent='绑定的订阅';
+            selector.innerHTML=`<option value="">不绑定订阅</option>${state.subscriptions.map(item=>`<option value="${esc(item.id)}" ${item.id===d.subscription_id?'selected':''}>${esc(item.name)} · ${esc(item.provider||'custom')} · ${esc(item.node_count||0)} 节点</option>`).join('')}`;
+          }
+          const oldSave=identitySection.querySelector('#saveIdentityBtn');
+          oldSave?.remove();
+          identitySection.querySelectorAll('.drawer-actions').forEach(actions=>{if(!actions.children.length)actions.remove()});
+          const summary=document.createElement('div');
+          summary.className='device-profile-card';
+          summary.style.marginBottom='14px';
+          const subscriptionStatus=subscription?.status==='ok'?'同步正常':subscription?.status==='error'?'同步失败':subscription?'待同步':'当前未绑定';
+          const statusClass=subscription?.status==='ok'?'green':subscription?.status==='error'?'red':'gray';
+          summary.innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><strong>${esc(subscription?.name||'当前未绑定订阅')}</strong><span class="badge ${statusClass}">${subscriptionStatus}</span></div><div class="detail-grid" style="margin-top:12px"><div><span class="detail-label">Provider</span><span class="detail-value">${esc(subscription?.provider||'—')}</span></div><div><span class="detail-label">节点数</span><span class="detail-value">${esc(subscription?.node_count??'—')}</span></div><div><span class="detail-label">最近同步</span><span class="detail-value">${fmtTime(subscription?.last_refresh)}</span></div><div><span class="detail-label">当前配置版本</span><span class="detail-value">v${esc(d.config_version||0)}</span></div></div>`;
+          if(form)form.before(summary);
+          const actions=document.createElement('div');
+          actions.className='device-profile-actions';
+          actions.innerHTML=`<button id="saveProfileBindingsBtn" class="btn small">保存身份与订阅</button><button id="unbindSubscriptionBtn" class="btn secondary small" ${d.subscription_id?'':'disabled'}>解除订阅绑定</button><span class="field-hint">更换或解除后会清除该设备的节点偏好并更新配置版本。</span>`;
+          form?.after(actions);
+        }
+
+        const rescue=state.rescue?.devices?.find(item=>item.id===d.id);
+        const info=state.rescue;
+        const rescueSection=document.createElement('section');
+        rescueSection.className='drawer-section device-frp-section';
+        rescueSection.innerHTML=`<h3>远程救援 · FRP / SSH</h3><div class="device-profile-card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><strong>隧道连通性</strong><span id="deviceTunnelStatus">${statusMarkup(rescue)}</span></div><div class="detail-grid" style="margin-top:14px"><div><span class="detail-label">FRPS 控制端</span><span class="detail-value mono">${!info?'救援信息暂不可用':info?.host?`${esc(info.host)}:${esc(info.control_port||7001)}`:'未配置'}</span></div><div><span class="detail-label">设备专属 SSH 入口</span><span class="detail-value mono">${!info?'救援信息暂不可用':rescue?.port_available&&info?.host?`${esc(info.host)}:${esc(rescue.remote_port)}`:rescue?.port_available?`端口 ${esc(rescue.remote_port)} · 未配置地址`:rescue?.port_assigned?'端口不在已登记范围':'未登记 SSH 端口'}</span></div><div><span class="detail-label">映射方向</span><span class="detail-value mono">127.0.0.1:22 → ${rescue?.port_available?esc(rescue.remote_port):'—'}</span></div><div><span class="detail-label">最近检测</span><span id="deviceTunnelChecked" class="detail-value">${fmtTime(rescue?.tunnel_checked_at)}</span></div></div><div class="device-profile-actions" style="align-items:end"><label class="field" style="min-width:190px"><span class="field-label">此设备固定 SSH 端口</span><input id="deviceRescuePort" type="number" min="${info?.remote_port_start||22000}" max="${info?.remote_port_end||22999}" value="${rescue?.port_assigned?esc(rescue.remote_port):''}" placeholder="例如 22000"></label><button id="saveRescuePortBtn" class="btn small">保存端口登记</button><button id="clearRescuePortBtn" class="btn secondary small" ${rescue?.port_assigned?'':'disabled'}>解除登记</button></div><div class="device-profile-actions"><button class="btn secondary small" data-copy-ssh="${rescue?.port_available&&info?.host?esc(`ssh -p ${rescue.remote_port} root@${info.host}`):''}" ${rescue?.port_available&&info?.host?'':'disabled'}>复制 SSH 命令</button><button id="probeTunnelBtn" class="btn small" data-probe-tunnel="${esc(d.id)}" ${rescue?.port_available&&info?.host?'':'disabled'}>检测 SSH 隧道</button></div><p class="device-frp-note">端口需要与该设备 frpc.toml 的 remotePort 一致。这里仅登记映射，不会修改设备或 FRPS 配置；每个端口只能分配给一台设备。检测只读取 SSH 握手，不会尝试登录。</p></div>`;
+        const frpHost=rescue?.frps_host||info?.host||'';
+        const frpControl=rescue?.frps_control_port||info?.control_port||7001;
+        const frpStart=rescue?.frp_port_start||info?.remote_port_start||22000;
+        const frpEnd=rescue?.frp_port_end||info?.remote_port_end||22999;
+        const frpValues=rescueSection.querySelectorAll('.detail-value.mono');
+        if(frpValues[0])frpValues[0].textContent=frpHost?`${frpHost}:${frpControl}`:'未配置';
+        if(frpValues[1])frpValues[1].textContent=rescue?.port_available&&frpHost?`${frpHost}:${rescue.remote_port}`:rescue?.port_assigned?'端口不在已登记范围':'未登记 SSH 端口';
+        const frpPortInput=rescueSection.querySelector('#deviceRescuePort');
+        if(frpPortInput){frpPortInput.min=String(frpStart);frpPortInput.max=String(frpEnd)}
+        const copySSH=rescueSection.querySelector('[data-copy-ssh]');
+        if(copySSH){copySSH.disabled=!(rescue?.port_available&&frpHost);copySSH.dataset.copySsh=rescue?.port_available&&frpHost?`ssh -p ${rescue.remote_port} root@${frpHost}`:''}
+        const probeSSH=rescueSection.querySelector('#probeTunnelBtn');
+        if(probeSSH)probeSSH.disabled=!(rescue?.port_available&&frpHost);
+        const frpNote=rescueSection.querySelector('.device-frp-note');
+        if(frpNote)frpNote.textContent='端口按设备登记的 FRP 通道分配，且同一端口只允许绑定一台设备。自动通道由 Agent 管理独立 FRPC；检测只读取 SSH 握手，不会尝试登录。';
+        const commandSection=[...body.querySelectorAll('.drawer-section')].find(section=>section.querySelector('h3')?.textContent==='基本命令');
+        if(commandSection)commandSection.before(rescueSection);else body.append(rescueSection);
+      };
+
+      async function saveIdentityAndSubscription(unbind=false){
+        const d=state.selectedDevice;
+        if(!d)return;
+        const name=$('identityName').value.trim();
+        const email=$('identityEmail').value.trim();
+        const subscriptionID=unbind?'':$('identitySubscription').value;
+        const changes=[];
+        if(d.subscription_id!==subscriptionID)changes.push(subscriptionID?'更换订阅会清除该设备当前的节点选择偏好。':'解绑订阅会停止向设备下发该订阅，并清除节点选择偏好。');
+        if((d.email||'').toLowerCase()!==email.toLowerCase())changes.push('更改邮箱会使现有客户访问凭证失效。');
+        if(changes.length&&!confirm(`${changes.join('\n')}\n\n继续保存吗？`))return;
+        const button=unbind?$('unbindSubscriptionBtn'):$('saveProfileBindingsBtn');
+        if(button)button.disabled=true;
+        try{
+          await api('/admin/devices/identity',{method:'POST',body:JSON.stringify({id:d.id,name,email,subscription_id:subscriptionID})});
+          const id=d.id;
+          await loadState(true);
+          openDrawer(id);
+          toast(unbind?'订阅已解绑':'设备档案已保存',unbind?'设备不再绑定原订阅':'身份与订阅信息已更新');
+        }catch(error){toast('保存失败',error.message,true)}
+        finally{if(button)button.disabled=false}
+      }
+
+      async function saveRescuePort(clear=false){
+        const d=state.selectedDevice;
+        if(!d)return;
+        const raw=$('deviceRescuePort')?.value.trim()||'';
+        const port=clear?0:Number(raw);
+        if(!clear&&(!raw||!Number.isInteger(port)||port<1)){toast('端口无效','请输入 FRPS 实际使用的固定 SSH 端口',true);return}
+        if(!confirm(clear?'解除该设备的 SSH 端口登记？不会修改设备上的 frpc 配置。':`将端口 ${port} 登记给此设备？请确认它与设备 frpc.toml 的 remotePort 一致。`))return;
+        const button=clear?$('clearRescuePortBtn'):$('saveRescuePortBtn');
+        if(button)button.disabled=true;
+        try{
+          await api('/admin/devices/rescue-port',{method:'POST',body:JSON.stringify({device_id:d.id,port})});
+          const id=d.id;
+          await loadState(true);
+          if($('page-rescue').classList.contains('active'))await refreshRescue();
+          openDrawer(id);
+          toast(clear?'SSH 端口登记已解除':'SSH 端口登记已保存',clear?'设备实际 FRP 配置未改变':`后台现在按端口 ${port} 检测该设备`);
+        }catch(error){toast('端口登记失败',error.message,true)}
+        finally{if(button)button.disabled=false}
+      }
+
+      document.body.addEventListener('click',async event=>{
+        const saveButton=event.target.closest('#saveProfileBindingsBtn');
+        if(saveButton){await saveIdentityAndSubscription(false);return}
+        const unbindButton=event.target.closest('#unbindSubscriptionBtn');
+        if(unbindButton){await saveIdentityAndSubscription(true);return}
+        const savePortButton=event.target.closest('#saveRescuePortBtn');
+        if(savePortButton){await saveRescuePort(false);return}
+        const clearPortButton=event.target.closest('#clearRescuePortBtn');
+        if(clearPortButton){await saveRescuePort(true);return}
+        const probeButton=event.target.closest('[data-probe-tunnel]');
+        if(probeButton){
+          probeButton.disabled=true;
+          probeButton.textContent='检测中…';
+          try{
+            const result=await api('/admin/rescue/probe',{method:'POST',body:JSON.stringify({device_id:probeButton.dataset.probeTunnel})});
+            const entry=state.rescue?.devices?.find(item=>item.id===result.device_id);
+            if(entry){entry.tunnel_status=result.tunnel_status;entry.tunnel_checked_at=result.checked_at}
+            if($('deviceTunnelStatus'))$('deviceTunnelStatus').innerHTML=statusMarkup(entry||result);
+            if($('deviceTunnelChecked'))$('deviceTunnelChecked').textContent=fmtTime(result.checked_at);
+            toast(result.reachable?'SSH 隧道可达':'暂未检测到 SSH 握手',result.reachable?'FRPS 已转发到设备 SSH 服务':'确认 FRPC 已连接且设备 SSH 服务仍在运行',!result.reachable);
+          }catch(error){toast('检测失败',error.message,true)}
+          finally{if(document.body.contains(probeButton)){probeButton.disabled=false;probeButton.textContent='重新检测 SSH 隧道'}}
+          return;
+        }
+        const copyButton=event.target.closest('[data-copy-device-code],[data-copy-ssh]');
+        if(copyButton){
+          const text=copyButton.dataset.copyDeviceCode||copyButton.dataset.copySsh;
+          try{await navigator.clipboard.writeText(text);toast('已复制','内容已复制到剪贴板')}
+          catch(_){toast('复制失败','浏览器未授予剪贴板权限，请手动复制',true)}
+        }
+      });
+    })();
+
+    const drawerBeforeRulePackages=openDrawer;
+    for(const card of document.querySelectorAll('.profile-card'))if(card.textContent.toLowerCase().includes('blackmatrix7'))card.remove();
+    openDrawer=function(id){
+      drawerBeforeRulePackages(id);
+      const select=$('drawerProfile');if(!select)return;
+      const feedback=document.createElement('p');feedback.className='muted';feedback.textContent='正在读取可用规则方案…';select.parentElement.append(feedback);
+      const update=document.createElement('button');update.type='button';update.className='btn secondary small';update.textContent='检查并更新所选规则';select.parentElement.append(update);
+      async function loadPackages(){try{const result=await api('/admin/rule-packages');if(state.selectedDevice?.id!==id||!select.isConnected)return;for(const option of [...select.options])if(option.value.startsWith('managed_'))option.remove();for(const p of result.packages){const option=document.createElement('option');option.value=p.id;option.textContent=p.name+(p.available?'':'（尚未就绪）');option.disabled=!p.available;select.append(option)}select.value=state.selectedDevice.profile;feedback.textContent=result.packages.map(p=>p.name+'：'+(p.available?p.version.slice(0,12):'不可用')+(p.update?.state==='failed'?'，更新失败：'+p.update.error:'')).join('；')}catch(e){feedback.textContent=e.message}}
+      update.addEventListener('click',async()=>{update.disabled=true;try{const result=await api('/admin/rule-package?device_id='+encodeURIComponent(id),{method:'POST',body:JSON.stringify({operation:'update',profile:select.value})});feedback.textContent=result.message}catch(e){feedback.textContent=e.message}finally{update.disabled=false}});
+      loadPackages();
+    };
+  </script>
+  <script>
+    (()=>{
+      document.querySelector('#page-rules .page-head h1').textContent='基础规则中心';
+      for(const heading of document.querySelectorAll('#page-rules .panel-head h2'))if(heading.textContent==='用户规则')heading.textContent='管理员基础规则';
+      const oldRenderRules=renderRules;
+      renderRules=function(){
+        oldRenderRules();
+        document.querySelectorAll('#ruleRows tr').forEach((row,index)=>{
+          const rule=state.rules[index];if(!rule)return;
+          const source=rule.source==='customer'?'客户自定义':rule.source==='admin'||rule.source==='user'?'管理员基础':rule.source||'其他';
+          const name=row.children[0]?.querySelector('span');if(name)name.textContent=rule.match_type+' · '+(rule.category||source);
+          const label=row.children[2]?.querySelector('span');if(label)label.textContent=source;
+        });
+      };
+      const oldOpenRuleModal=openRuleModal;
+      openRuleModal=function(){oldOpenRuleModal();document.getElementById('modalTitle').textContent='新建管理员基础规则';const hint=document.querySelector('#modalBody .field-hint');if(hint)hint.textContent='管理员基础规则；客户的有效自定义规则优先。'};
+      const beforeCustomerReset=openDrawer;
+      openDrawer=function(id){
+        beforeCustomerReset(id);
+        const device=state.selectedDevice,body=document.getElementById('drawerBody');
+        if(!device||device.id!==id||!body)return;
+        const section=document.createElement('div');section.className='drawer-section';
+        const title=document.createElement('h3');title.textContent='客户求助 · 回到基础规则';
+        const note=document.createElement('p');note.className='muted';note.style.cssText='font-size:12px;margin:0 0 12px';note.textContent='仅在客户求助时使用。清除该设备的客户自定义规则、节点偏好和临时模式；保留管理员基础方案、订阅、注册和 FRP 救援配置。离线设备下次同步后生效。';
+        const button=document.createElement('button');button.type='button';button.className='btn secondary small';button.textContent='重置客户分流到基础状态';
+        button.addEventListener('click',async()=>{
+          if(state.selectedDevice?.id!==id||!confirm('确定清除这台设备的客户自定义分流，恢复到当前管理员基础方案？此操作不会重置注册、FRP、密码或网络。'))return;
+          button.disabled=true;
+          try{
+            const response=await api('/admin/devices/reset-customer-settings',{method:'POST',body:JSON.stringify({device_id:id,expected_version:device.config_version,confirm:'RESET_CUSTOMER_SETTINGS'})});
+            await loadState(true);openDrawer(id);
+            toast('客户分流已重置',response.reload_queued?'已排队请求设备同步基础规则。':'云端已保存；设备下次正常同步后生效。');
+          }catch(error){toast('重置未完成',error.message,true)}
+          finally{button.disabled=false}
+        });
+        section.append(title,note,button);body.append(section);
+        const software=document.createElement('div');software.className='drawer-section';
+        software.innerHTML='<h3>软件维护 · 管理员</h3><p class="muted" style="font-size:12px">仅发送签名版本的升级请求，或让设备恢复自身的上一版快照。排队不等于安装成功；设备重启后会继续上报最终结果。不会更改订阅、用户设置和 FRP 凭据。旧版首次过渡需要本地或 SSH 安装；不能从后台回退到不支持结果回报的旧版。</p><div class="form-grid"><label class="field"><span class="field-label">发布通道</span><select class="software-channel"><option value="stable">稳定版</option><option value="pilot">测试版</option></select></label><label class="field"><span class="field-label">目标版本</span><input class="software-version" placeholder="例如 0.8.0" autocomplete="off"></label></div><div class="drawer-actions"><button type="button" class="btn small software-upgrade" disabled>请求设备升级</button></div><div class="form-grid" style="margin-top:12px"><label class="field full"><span class="field-label">回退前的当前版本（必须准确填写）</span><input class="software-rollback-version" placeholder="例如 0.8.0" autocomplete="off"></label></div><div class="drawer-actions"><button type="button" class="btn secondary small software-rollback" disabled>请求回退上一版</button><button type="button" class="btn secondary small software-refresh">刷新执行状态</button></div><p class="muted software-status" style="font-size:12px;margin-top:12px">正在读取维护状态…</p>';
+        body.append(software);
+        const status=software.querySelector('.software-status');
+        const upgradeControl=software.querySelector('.software-upgrade');
+        const rollbackControl=software.querySelector('.software-rollback');
+        let remoteSupported=false;
+        const validVersion=value=>/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(value)&&value.length<=32;
+        async function refreshSoftware(){try{const result=await api('/admin/devices/software?device_id='+encodeURIComponent(id));if(state.selectedDevice?.id!==id||!software.isConnected)return;remoteSupported=result.remote_supported===true;upgradeControl.disabled=!remoteSupported;rollbackControl.disabled=!remoteSupported;const latest=result.commands?.[0];const labels={queued:'已排队，未执行',claimed:'设备已接收，执行中或待确认',ok:'设备确认完成',failed:'设备报告失败'};const recent=latest?`最近请求：${latest.command==='software_update'?'升级':'回退'} ${latest.payload} · ${labels[latest.status]||'状态待确认'}。`:'尚无远程软件维护命令。';status.textContent=`${recent}设备上报 Agent 版本：${result.reported_agent_version||'未知'}。${remoteSupported?'':'这台设备尚未具备可确认的远程维护能力，请先本地升级。'}`;}catch(error){if(software.isConnected){remoteSupported=false;upgradeControl.disabled=true;rollbackControl.disabled=true;status.textContent='维护状态读取失败：'+error.message}}}
+        software.querySelector('.software-refresh').addEventListener('click',refreshSoftware);
+        async function requestSoftware(operation){if(!remoteSupported){status.textContent='设备尚不支持远程软件维护，请先本地升级。';return}const version=(operation==='update'?software.querySelector('.software-version'):software.querySelector('.software-rollback-version')).value.trim();if(!validVersion(version)){status.textContent='请填写准确的三段版本号，例如 0.8.0。';return}const channel=software.querySelector('.software-channel').value;const question=operation==='update'?`让 ${device.serial} 从 ${channel} 通道安装签名版本 ${version}？设备在线后执行，发布清单变更将拒绝安装。`:`让 ${device.serial} 从当前版本 ${version} 回退到本机上一版快照？请先核实当前版本和救援通道。`;if(!confirm(question))return;const control=operation==='update'?upgradeControl:rollbackControl;control.disabled=true;try{await api('/admin/devices/software',{method:'POST',body:JSON.stringify({device_id:id,operation,channel:operation==='update'?channel:'',version,confirm:(operation==='update'?'UPDATE:':'ROLLBACK:')+version})});status.textContent='命令已排队，尚未确认设备执行。';await refreshSoftware()}catch(error){status.textContent='请求未完成：'+error.message}finally{control.disabled=!remoteSupported}}
+        software.querySelector('.software-upgrade').addEventListener('click',()=>requestSoftware('update'));
+        software.querySelector('.software-rollback').addEventListener('click',()=>requestSoftware('rollback'));
+        refreshSoftware();
+      };
+    })();
+  </script>
+  <script src="/assets/enrollments.js"></script>
+</body>
+</html>

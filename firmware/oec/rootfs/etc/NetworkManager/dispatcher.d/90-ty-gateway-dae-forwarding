@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+case "${2:-}" in
+  up|reapply|dhcp4-change|dhcp6-change)
+    exec /usr/local/libexec/ty-gateway-dae-preflight "${1:-}"
+    ;;
+esac

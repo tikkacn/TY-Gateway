@@ -1,0 +1,29 @@
+[Unit]
+Description=TY Gateway privileged dae configuration helper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/libexec/ty-gateway-dae-helper
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+ReadWritePaths=/etc/dae /run
+ReadOnlyPaths=/usr/bin/dae /usr/bin/systemctl /usr/bin/journalctl
+LockPersonality=true
+MemoryDenyWriteExecute=true
+UMask=0077
+LimitNOFILE=64
+
+[Install]
+WantedBy=multi-user.target

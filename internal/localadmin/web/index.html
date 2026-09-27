@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f5f6fa">
+<title>TY Gateway · 本地设备管理</title>
+<style>
+:root{color-scheme:light;--ink:#182230;--muted:#667085;--line:#e4e7ec;--brand:#5547d9;--brand2:#4536bd;--bg:#f5f6fa;--good:#147d52;--warn:#8a5700;--bad:#b42318}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}button,input{font:inherit}button{cursor:pointer}.wrap{width:min(980px,calc(100% - 32px));margin:auto}.hidden{display:none!important}.top{background:#fff;border-bottom:1px solid var(--line)}.bar{height:68px;display:flex;align-items:center;justify-content:space-between;gap:18px}.brand{display:flex;align-items:center;gap:11px;font-weight:800;letter-spacing:.01em}.mark{display:grid;place-items:center;width:36px;height:36px;border-radius:12px;background:var(--brand);color:white;box-shadow:0 4px 12px #5547d933}.brand small{display:block;color:var(--muted);font-size:11px;font-weight:550;letter-spacing:.09em}.main{padding:36px 0 60px}.eyebrow{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--brand);font-weight:800}.title{font-size:28px;letter-spacing:-.035em;margin:5px 0 5px}.sub{margin:0;color:var(--muted)}.local-nav{display:flex;gap:6px;margin-top:22px;padding:5px;background:#ececf8;border:1px solid #deddf0;border-radius:12px;width:max-content;max-width:100%}.local-tab{border:0;border-radius:8px;background:transparent;color:#667085;padding:9px 16px;font-weight:750}.local-tab:hover{color:var(--brand2)}.local-tab.active{background:#fff;color:var(--brand2);box-shadow:0 2px 7px #18223012}.grid{display:grid;grid-template-columns:1.05fr .95fr;gap:16px;margin-top:16px}.card{background:white;border:1px solid var(--line);border-radius:15px;padding:22px;box-shadow:0 5px 18px #18223008}.card h2{font-size:17px;margin:0 0 5px}.muted{color:var(--muted);font-size:13px;margin:0}.device{grid-column:1/-1;background:linear-gradient(110deg,#f0efff,#fff 66%);border-color:#d9d5ff;display:flex;align-items:center;justify-content:space-between;gap:20px}.code-label{font-size:12px;color:var(--muted);font-weight:700}.code{font:800 25px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.075em;color:var(--brand2);margin-top:6px;overflow-wrap:anywhere}.ip{font-size:13px;color:#344054;margin-top:8px}.badge{display:inline-flex;align-items:center;gap:7px;border-radius:99px;background:#eef2f6;color:#475467;padding:6px 10px;font-size:12px;font-weight:750;white-space:nowrap}.badge:before{content:"";width:7px;height:7px;border-radius:50%;background:#98a2b3}.badge.good{background:#eaf8f1;color:var(--good)}.badge.good:before{background:#12a66a}.field{display:grid;gap:7px;margin-top:17px}.field span{font-size:12px;font-weight:750;color:#344054}.field input{height:43px;border:1px solid #cfd5df;border-radius:9px;padding:9px 11px;width:100%;outline:none;background:white}.field input:focus{border-color:var(--brand);box-shadow:0 0 0 3px #5547d91f}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}.btn{border:0;border-radius:9px;background:var(--brand);color:white;font-weight:750;padding:10px 15px}.btn:hover{background:var(--brand2)}.btn.secondary{border:1px solid #d0d5dd;background:#fff;color:#344054}.btn:disabled{opacity:.55;cursor:wait}.full{width:100%;margin-top:20px}.error{min-height:18px;margin-top:11px;color:var(--bad);font-size:12px}.notice{border-radius:10px;padding:12px 13px;margin-top:15px;background:#f8f9fc;color:#475467;font-size:13px}.notice.warn{background:#fff7e8;color:var(--warn)}.notice.good{background:#eaf8f1;color:var(--good)}.address-list{display:grid;gap:5px;margin-top:12px;font:13px ui-monospace,SFMono-Regular,Consolas,monospace;color:#344054}.divider{border:0;border-top:1px solid var(--line);margin:20px 0}.help{font-size:12px;color:var(--muted);margin:10px 0 0}.auth-shell{min-height:calc(100vh - 68px);display:grid;place-items:center;padding:25px 0}.auth-card{width:min(440px,100%);padding:29px}.auth-card h1{font-size:25px;margin:24px 0 4px;letter-spacing:-.03em}.foot{font-size:12px;color:var(--muted);text-align:center;margin-top:22px}@media(max-width:700px){.wrap{width:calc(100% - 24px)}.main{padding-top:25px}.grid{grid-template-columns:1fr}.device{grid-column:auto;align-items:flex-start;flex-direction:column}.card,.auth-card{padding:19px}.title{font-size:25px}.bar{height:60px}.local-nav{width:100%;overflow:auto}.local-tab{flex:1;white-space:nowrap}}
+</style>
+<style>
+.btn{padding:8px 12px;border-radius:8px;font-size:13px}.full{margin-top:16px}.local-tab{padding:8px 13px;font-size:13px}.neighbor-panel{border-top:1px solid var(--line);margin-top:20px;padding-top:18px}.neighbor-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.neighbor-head h3{margin:0;font-size:15px}.neighbor-list{display:grid;gap:7px;margin-top:10px}.neighbor-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:9px 10px}.neighbor-main{min-width:0}.neighbor-ip{font-weight:750;color:#344054}.neighbor-mac{font:12px ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--muted);margin-top:2px}.neighbor-state{font-size:11px;color:var(--muted);margin-left:6px}.compact{padding:6px 9px;font-size:12px}.neighbor-empty{color:var(--muted);font-size:12px;padding:10px 0}
+</style>
+<style>.wide-card{grid-column:1/-1}</style>
+<style>.offline-update{border-top:1px solid var(--line);margin-top:22px;padding-top:18px}.offline-update h3{font-size:15px;margin:0 0 5px}.offline-update-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}.offline-update input[type=file]{width:100%;min-width:0;border:1px solid #cfd5df;border-radius:9px;padding:8px;background:#fff;font-size:12px}.offline-update .field{margin-top:12px}.offline-update .notice{margin-top:10px}@media(max-width:700px){.offline-update-grid{grid-template-columns:1fr}}</style>
+<style>
+.card,.field{min-width:0}.field select{width:100%;min-width:0;height:43px;padding:9px 11px;border:1px solid #cfd5df;border-radius:9px;background:#fff;color:var(--ink);font:inherit;font-size:14px;outline:none}.field select:focus{border-color:var(--brand);box-shadow:0 0 0 3px #5547d91f}.field select:disabled{background:#f5f6fa;color:var(--muted);cursor:not-allowed}.btn{min-height:40px;padding:9px 16px;font-size:14px;line-height:20px;flex-shrink:0}.btn.compact{min-height:34px;padding:6px 10px;font-size:12px}.binding-fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}.network-save-actions{border-top:1px solid var(--line);margin-top:24px;padding-top:20px;justify-content:flex-end}.sync-feedback{margin-top:16px}.sync-feedback .notice{margin-top:0}@media(max-width:700px){.binding-fields{grid-template-columns:1fr;gap:0}.network-save-actions .btn{width:100%}}
+</style>
+<style>
+.routing-section{margin-top:19px}.routing-label{display:block;margin-bottom:8px;font-size:12px;font-weight:750;color:#344054}.choice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:9px}.choice-button{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:3px;min-height:57px;padding:9px 12px;border:1px solid #d0d5dd;border-radius:10px;background:#fff;color:#344054;text-align:left;transition:border-color .12s,background .12s,box-shadow .12s}.choice-button:hover{border-color:#9b93ed;background:#faf9ff}.choice-button.active{border-color:var(--brand);background:#f2f0ff;color:var(--brand2);box-shadow:0 0 0 2px #5547d91c}.choice-title{font-size:13px;font-weight:750;line-height:1.35}.choice-meta{font-size:11px;color:var(--muted);line-height:1.35}.mode-grid{grid-template-columns:repeat(auto-fit,minmax(145px,1fr))}.actual-node-panel{margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:11px;background:#fafbfc}.actual-node-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}.actual-node-head h3{margin:0;font-size:14px}.actual-node-count{font-size:11px;color:var(--muted)}.actual-node-note{margin:6px 0 10px;font-size:12px;color:var(--muted)}.node-search{width:100%;height:39px;padding:8px 10px;border:1px solid #cfd5df;border-radius:8px;background:#fff;color:var(--ink);font:inherit;font-size:13px;outline:none}.node-search:focus{border-color:var(--brand);box-shadow:0 0 0 3px #5547d91f}.actual-node-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:7px;max-height:280px;overflow:auto;margin-top:9px;padding:2px}.actual-node-button{min-height:45px;padding:7px 9px}.actual-node-button .choice-title{overflow-wrap:anywhere}.choice-empty{grid-column:1/-1;margin:0;padding:11px;color:var(--muted);font-size:12px}.routing-actions{margin-top:13px}.routing-help{margin-top:8px}.routing-sync{margin-top:13px}.routing-sync .notice{margin-top:0}@media(max-width:700px){.choice-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.actual-node-grid{grid-template-columns:1fr;max-height:240px}.actual-node-panel{padding:12px}}
+</style>
+<style>
+.routing-category-list{display:grid;gap:10px}.routing-category-card{border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden}.routing-category-card.selected{border-color:#aaa2f1;box-shadow:0 0 0 2px #5547d912}.routing-category-trigger{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:65px;padding:12px 15px;border:0;background:transparent;text-align:left;color:var(--ink)}.routing-category-trigger:hover{background:#faf9ff}.routing-category-title{font-weight:800}.routing-category-summary{display:block;color:var(--muted);font-size:12px;margin-top:2px}.routing-category-arrow{font-size:14px;color:var(--brand)}.routing-category-detail{padding:1px 15px 16px;border-top:1px solid var(--line);background:#fcfcff}.routing-category-detail .routing-label{margin-top:12px}.region-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:7px;margin-top:8px}.backup-slots{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.backup-slots .choice-button{min-height:42px}.routing-status-hint{font-size:12px;color:var(--muted);margin:10px 0 0}.routing-category-detail .actual-node-panel{margin-top:14px}.routing-category-detail .actual-node-grid{max-height:250px}.routing-category-detail .routing-actions{justify-content:flex-end}.routing-category-list .choice-button{width:100%}.routing-category-list .backup-slots .choice-button{width:auto;flex:1;min-width:130px}@media(max-width:700px){.routing-category-trigger{padding:12px}.routing-category-detail{padding:1px 12px 14px}.routing-category-list .backup-slots .choice-button{min-width:95px}}
+</style>
+<style>
+/* Dense routing controls: keep category and node options easy to scan without oversized tiles. */
+.routing-category-list{gap:6px}.routing-category-trigger{min-height:50px;padding:8px 11px}.routing-category-title{font-size:13px}.routing-category-summary{font-size:11px}.routing-category-detail{padding-bottom:11px}.routing-section{margin-top:13px}.routing-label{margin-bottom:6px}
+.choice-grid,.mode-grid{grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:6px}.choice-button{min-height:42px;padding:6px 9px;gap:2px;border-radius:8px}.choice-title{font-size:12px}.choice-meta{font-size:10.5px}.region-grid{grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:5px}.actual-node-panel{margin-top:12px;padding:10px}.actual-node-grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:5px}.actual-node-button{min-height:40px;padding:5px 8px}.backup-slots{gap:5px;margin-top:7px}.backup-slots .choice-button{min-height:40px}.routing-actions .btn{min-height:36px;padding:7px 11px;font-size:12px}
+@media(max-width:700px){.routing-category-trigger{min-height:48px;padding:8px 10px}.routing-category-detail{padding:1px 10px 11px}.choice-grid,.mode-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.actual-node-grid{grid-template-columns:1fr}.routing-category-list .backup-slots .choice-button{min-width:88px}}
+</style>
+<style>
+.software-panel{grid-column:1/-1}.software-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:17px}.software-detail{padding:11px 13px;border:1px solid var(--line);border-radius:9px;background:#fbfcff}.software-detail span{display:block;color:var(--muted);font-size:12px}.software-detail strong{display:block;margin-top:4px;font-size:15px}.software-panel .actions{margin-top:17px}@media(max-width:700px){.software-details{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap bar"><div class="brand"><div class="mark">TY</div><div>TY Gateway<small>LOCAL DEVICE</small></div></div><span id="networkBadge" class="badge">正在检查设备</span></div></header>
+<main id="authView" class="wrap auth-shell"><section class="card auth-card"><div class="eyebrow">本地 OEC 管理</div><h1 id="authTitle">设备管理</h1><p id="authIntro" class="sub">仅限本地网络访问；首次使用请设置本地管理密码。</p><div id="deviceCodeSetup" class="notice hidden"></div><label id="passwordField" class="field"><span id="passwordLabel">管理密码</span><input id="password" type="password" autocomplete="current-password" maxlength="256"></label><label id="confirmField" class="field hidden"><span>确认新密码</span><input id="confirmPassword" type="password" autocomplete="new-password" maxlength="256"></label><button id="authButton" class="btn full">登录</button><div id="authError" class="error" role="status"></div><div id="recoveryEntry" class="actions hidden"><button id="showRecovery" class="btn secondary">通过服务支持恢复</button></div><div id="recoveryPanel" class="hidden"><div class="notice warn">恢复需要 TY Gateway 服务支持根据设备码和本次挑战签发一次性授权。挑战 10 分钟有效，使用后立即失效。</div><button id="getChallenge" class="btn secondary" style="margin-top:12px">生成恢复挑战</button><div id="challengeBox" class="notice hidden"></div><label class="field"><span>服务支持提供的一次性授权</span><input id="authorization" autocomplete="off" spellcheck="false"></label><label class="field"><span>设置新密码（至少 12 个字符）</span><input id="recoveryPassword" type="password" autocomplete="new-password" maxlength="256"></label><label class="field"><span>确认新密码</span><input id="recoveryPassword2" type="password" autocomplete="new-password" maxlength="256"></label><button id="resetPassword" class="btn full">验证并重置密码</button><button id="backToLogin" class="btn secondary full">返回登录</button><div id="recoveryError" class="error" role="status"></div></div><p class="help">MAC / 设备码只用于识别设备，不是密码或登录凭证。</p></section></main>
+<main id="appView" class="wrap main hidden"><div class="eyebrow">本地设备管理</div><h1 class="title">设备与局域网</h1><p class="sub">本地管理在无外网时仍可使用；此页面不会显示订阅地址或节点凭据。</p><div class="grid"><section class="card device"><div><div class="code-label">设备码</div><div id="deviceCode" class="code">—</div><div class="ip">网络接口：<span id="interfaceName">—</span></div><div id="addresses" class="address-list"></div></div><span id="stateBadge" class="badge">状态读取中</span></section><section class="card"><h2>本地密码</h2><p class="muted">修改后，其他已登录的本地会话都会退出。</p><label class="field"><span>当前密码</span><input id="currentPassword" type="password" autocomplete="current-password" maxlength="256"></label><label class="field"><span>新密码（至少 12 个字符）</span><input id="newPassword" type="password" autocomplete="new-password" maxlength="256"></label><label class="field"><span>确认新密码</span><input id="newPassword2" type="password" autocomplete="new-password" maxlength="256"></label><div class="actions"><button id="changePassword" class="btn">更新密码</button><button id="logout" class="btn secondary">退出登录</button></div><div id="passwordResult" class="error" role="status"></div></section><section class="card"><h2>网络功能</h2><p class="muted">当前设备的网络环境尚在识别中。</p><div class="notice warn">正在读取局域网服务运行状态。</div><p class="help">主路由上的公网端口转发仍需在主路由设置；本机后续只管理转发到局域网设备的规则，不会开放本机管理页或 SSH。</p></section><section class="card"><h2>离线密码恢复</h2><p class="muted">此功能仅在设备已配置恢复公钥后可用，不会使用 MAC 作为万能密码。</p><div id="recoveryStatus" class="notice">正在检查恢复配置…</div><div class="actions"><button id="openRecovery" class="btn secondary">生成一次性恢复挑战</button></div><div id="recoveryStatusError" class="error" role="status"></div></section></div><p class="foot">TY Gateway · OEC 本地管理</p></main>
+<script>
+(()=>{
+  const app=document.getElementById('appView');
+  if(!app)return;
+  let state=null,editingRule='';
+  const categoryLabels={China:'国内', 'HK-Broker':'港澳证券（HK-Broker）',AI:'AI 服务（OpenAI / Claude / Gemini）',YouTube:'YouTube',TikTok:'TikTok',Netflix:'Netflix',GitHub:'GitHub',Google:'Google',Microsoft:'Microsoft',Apple:'Apple',Telegram:'Telegram',Final:'其他流量（Final 兜底）'};
+  const el=(tag,props={},text='')=>{const node=document.createElement(tag);Object.assign(node,props);if(text)node.textContent=text;return node};
+  async function api(path,method='GET',body){
+    const options={method,credentials:'same-origin',cache:'no-store',headers:{}};
+    if(body!==undefined){options.headers['Content-Type']='application/json';options.body=JSON.stringify(body)}
+    const response=await fetch('/api/customer'+path,options),data=await response.json().catch(()=>({}));
+    if(!response.ok)throw Error(response.status===401?'登录已过期，请重新登录后重试。':data.error||'客户配置暂不可用，请稍后重试。');
+    return data;
+  }
+  function addOption(select,value,label){select.append(el('option',{value},label))}
+  function card(title,description){const section=el('section',{className:'card',id:'customer-'+title});section.dataset.localSection='proxy';section.append(el('h2',{},title),el('p',{className:'muted'},description));return section}
+  function build(){
+    const grid=app.querySelector('.grid');if(!grid||document.getElementById('customer-rules'))return;
+    const rules=card('自定义规则','只对这台 OEC 生效；不会显示订阅地址或节点凭据。');rules.id='customer-rules';
+    const form=el('div',{className:'customer-form'}),type=el('select',{id:'customer-rule-type'}),action=el('select',{id:'customer-rule-action'}),value=el('input',{id:'customer-rule-value',placeholder:'例如 openai.com',autocomplete:'off'}),save=el('button',{className:'btn'},'添加规则');
+    addOption(type,'domain','完整域名');addOption(type,'domain_suffix','域名及子域名');addOption(type,'cidr','IP 地址 / CIDR 网段');
+    addOption(action,'DIRECT','直连');addOption(action,'PROXY','代理');addOption(action,'AUTO','自动选择');addOption(action,'BLOCK','阻断');
+    const row=el('div',{style:'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:15px'});const tLabel=el('label',{className:'field',style:'margin-top:0'});tLabel.append(el('span',{},'匹配方式'),type);const aLabel=el('label',{className:'field',style:'margin-top:0'});aLabel.append(el('span',{},'策略'),action);row.append(tLabel,aLabel);
+    const valueLabel=el('span',{},'域名'),vLabel=el('label',{className:'field'});vLabel.append(valueLabel,value);const actions=el('div',{className:'actions'});actions.append(save);form.append(row,vLabel,actions);
+    const updateMatchField=()=>{const isIP=type.value==='cidr';valueLabel.textContent=isIP?'IP 地址 / CIDR':'域名';value.placeholder=isIP?'例如 203.0.113.10 或 2001:db8::/32':'例如 openai.com'};type.addEventListener('change',updateMatchField);updateMatchField();
+    const feedback=el('div',{id:'customer-rule-feedback',className:'error',role:'status'}),list=el('div',{id:'customer-rule-list',className:'address-list'});rules.append(form,feedback,list);
+    save.addEventListener('click',async()=>{save.disabled=true;feedback.textContent='';try{await api('/rules','POST',{id:editingRule,match_type:type.value,match_value:value.value.trim(),action:action.value});editingRule='';value.value='';save.textContent='添加规则';await refresh()}catch(e){feedback.textContent=e.message}finally{save.disabled=false}});
+    const nodes=card('网站分流','每个网站分类独立选择线路。页面列出 DAE 验证过的候选节点；动态策略的实际出口需按连接观测，不能由配置推断。');nodes.id='customer-nodes';nodes.classList.add('wide-card');
+    const cat=el('div',{className:'routing-category-list',id:'customer-node-categories'}),modes=el('div',{className:'choice-grid mode-grid',id:'customer-node-modes'}),regionPanel=el('div',{className:'region-grid',id:'customer-region-choices'}),backupPanel=el('div',{className:'backup-slots',id:'customer-backup-slots'}),actualPanel=el('section',{className:'actual-node-panel'}),actualHead=el('div',{className:'actual-node-head'}),actualGrid=el('div',{className:'actual-node-grid',id:'customer-actual-nodes'}),nodeSearch=el('input',{className:'node-search',id:'customer-node-search',type:'search',placeholder:'搜索节点名称',autocomplete:'off'}),actualNote=el('p',{className:'actual-node-note',id:'customer-actual-node-note'}),actualCount=el('span',{className:'actual-node-count',id:'customer-actual-node-count'}),nSave=el('button',{type:'button',className:'btn'},'保存此分类'),nFeedback=el('div',{id:'customer-node-feedback',className:'error'});
+    cat.setAttribute('role','group');cat.setAttribute('aria-label','网站分类');modes.setAttribute('role','group');modes.setAttribute('aria-label','连接方式');actualPanel.setAttribute('aria-labelledby','actual-node-title');actualGrid.setAttribute('role','group');actualGrid.setAttribute('aria-label','实际节点');nodeSearch.setAttribute('aria-label','搜索实际节点');nFeedback.setAttribute('role','status');nFeedback.setAttribute('aria-live','polite');
+    let selectedCategory='',draftPreference='',draftPreferences={},pendingNodeSave=null,nodeSyncTimer=0,editMode='',backupDraft=[],backupSlot=0;
+    actualHead.append(el('h3',{id:'actual-node-title'},'设备验证过的候选节点'),actualCount);actualPanel.append(actualHead,actualNote,nodeSearch,actualGrid);
+    const catSection=el('div',{className:'routing-section'});catSection.append(el('span',{className:'routing-label'},'网站分类'),cat);
+    const modeSection=el('div',{className:'routing-section'});modeSection.append(el('span',{className:'routing-label'},'连接方式'),modes,regionPanel,backupPanel);
+    const saveActions=el('div',{className:'actions routing-actions'});saveActions.append(nSave);
+    const nodeSync=el('div',{className:'sync-feedback routing-sync'});
+    nodes.append(catSection,nodeSync);
+    const nodeControls=[nSave];
+    function preferenceLabel(value){if(value==='@direct')return '直连';if(value==='@proxy')return '全体节点自动选择';if(value?.startsWith('@region:'))return ({HK:'香港',TW:'台湾',SG:'新加坡',JP:'日本',KR:'韩国',US:'美国',MY:'马来西亚',DE:'德国',GB:'英国'})[value.slice(8)]+'节点自动选择';if(value?.startsWith('@failover:')){const ids=value.slice(10).split(',').filter(Boolean),primary=(state?.nodes||[]).find(n=>n.id===ids[0]);return ids.length<2?'主备待选择':'主备：'+(primary?.name||'节点已不可用')+' + '+(ids.length-1)+' 个备用'}if(!value)return '跟随方案默认';const found=(state?.nodes||[]).find(item=>item.id===value);return found?'固定：'+(found.name||found.id):'节点已不可用'}
+    function updateDraftFeedback(){if(pendingNodeSave){nFeedback.textContent='云端已保存，正在等待设备应用；确认前继续使用上一版。';nFeedback.className='notice warn';return}const changed=(state?.categories||[]).some(category=>(draftPreferences[category]??state?.preferences?.[category]??'')!==(state?.preferences?.[category]||''));nFeedback.textContent=changed?'有尚未保存的分类设置；切换分类不会丢弃这些更改。':'';nFeedback.className=changed?'notice warn':'error'}
+    function pendingKey(){return 'ty-gateway-node-pending:'+String(state?.device?.id||'')}
+    function rememberPending(){try{if(pendingNodeSave)sessionStorage.setItem(pendingKey(),JSON.stringify(pendingNodeSave));else sessionStorage.removeItem(pendingKey())}catch(_){}}
+    function restorePending(){if(pendingNodeSave||!state?.device?.id)return;try{const value=JSON.parse(sessionStorage.getItem(pendingKey())||'null');if(value&&Number.isSafeInteger(value.version)&&value.version>0&&typeof value.category==='string'&&typeof value.node_id==='string')pendingNodeSave=value}catch(_){}}
+    function scheduleNodeCheck(delay=2500){clearTimeout(nodeSyncTimer);if(pendingNodeSave)nodeSyncTimer=setTimeout(checkNodeConfirmation,delay)}
+    async function checkNodeConfirmation(){const expected=pendingNodeSave;if(!expected)return;try{const applied=await api('/me');if(pendingNodeSave!==expected)return;if(applied.device?.id!==state?.device?.id)throw Error('设备身份不一致');if(Number(applied.device?.config_version)>=expected.version){pendingNodeSave=null;rememberPending();state=applied;selectedCategory=expected.category;render();const confirmed=(applied.preferences?.[expected.category]||'')===expected.node_id;nFeedback.textContent=confirmed?'设备已确认应用此分类的连接方式。':'设备已同步新版本，但此分类的选择已被后续设置覆盖；请核对当前选项。';nFeedback.className=confirmed?'notice good':'notice warn';return}nFeedback.textContent='云端已保存，设备仍在同步；当前继续使用上一版。';nFeedback.className='notice warn'}catch(_){if(pendingNodeSave!==expected)return;nFeedback.textContent='云端已保存，暂时无法读取设备应用状态；设备会继续重试，当前使用上一版。';nFeedback.className='notice warn'}if(pendingNodeSave===expected)scheduleNodeCheck(document.hidden?12000:5000)}
+    function actualNodeList(){
+      const query=nodeSearch.value.trim().toLocaleLowerCase(),inventory=state?.nodes||[],visible=inventory.filter(item=>(item.name||item.id).toLocaleLowerCase().includes(query));actualGrid.replaceChildren();
+      if(!inventory.length){actualGrid.append(el('p',{className:'choice-empty'},'本机尚无已验证的 DAE 节点，请先同步订阅。'));return}
+      if(!visible.length){actualGrid.append(el('p',{className:'choice-empty'},'没有匹配的节点。'));return}
+      for(const item of visible){
+        const selected=editMode==='failover'?backupDraft[backupSlot]===item.id:draftPreference===item.id;
+        const button=el('button',{type:'button',className:'choice-button actual-node-button'+(selected?' active':'')});button.setAttribute('aria-pressed',String(selected));
+        button.append(el('span',{className:'choice-title'},item.name||item.id));if(item.region)button.append(el('span',{className:'choice-meta'},item.region+' · '+(editMode==='failover'?'点选为'+['主用','备用 1','备用 2'][backupSlot]:'点选为固定节点')));
+        button.addEventListener('click',()=>{
+          if(editMode==='failover'){
+            if(backupDraft.includes(item.id)&&backupDraft[backupSlot]!==item.id){nFeedback.textContent='同一个节点不能同时担任主用和备用。';nFeedback.className='notice warn';return}
+            backupDraft[backupSlot]=item.id;if(backupSlot<2)backupSlot++;
+            draftPreference='@failover:'+backupDraft.filter(Boolean).join(',');
+          }else{editMode='fixed';draftPreference=item.id}
+          draftPreferences[selectedCategory]=draftPreference;renderNodeOptions(false)
+        });actualGrid.append(button)
+      }
+    }
+    function renderNodeOptions(resetDraft=true){
+      const categories=state?.categories||[],inventory=state?.nodes||[];
+      if(!categories.includes(selectedCategory))selectedCategory=categories[0]||'';
+      if(resetDraft){draftPreferences={...(state?.preferences||{})};draftPreference=draftPreferences[selectedCategory]||'';editMode='';backupDraft=[]}
+      cat.replaceChildren();modes.replaceChildren();regionPanel.replaceChildren();backupPanel.replaceChildren();
+      if(!categories.length){cat.append(el('p',{className:'choice-empty'},'此方案暂无独立网站分类。'));nSave.disabled=true;return}
+      const regionChoice=draftPreference.startsWith('@region:'),backupChoice=draftPreference.startsWith('@failover:');
+      if(!editMode)editMode=regionChoice?'region':backupChoice?'failover':inventory.some(n=>n.id===draftPreference)?'fixed':'';
+      if(backupChoice&&(!backupDraft.length||backupDraft.join(',')!==draftPreference.slice(10)))backupDraft=draftPreference.slice(10).split(',').filter(Boolean);
+      for(const category of categories){
+        const section=el('section',{className:'routing-category-card'+(category===selectedCategory?' selected':'')}),button=el('button',{type:'button',className:'routing-category-trigger'});
+        button.setAttribute('aria-expanded',String(category===selectedCategory));const value=draftPreferences[category]??state?.preferences?.[category]??'';
+        const summary=el('span');summary.append(el('span',{className:'routing-category-title'},categoryLabels[category]||category),el('span',{className:'routing-category-summary'},preferenceLabel(value)));
+        button.append(summary,el('span',{className:'routing-category-arrow'},category===selectedCategory?'当前分类 ↑':'设置 ↓'));
+        button.addEventListener('click',()=>{if(category===selectedCategory)return;selectedCategory=category;draftPreference=draftPreferences[category]??state?.preferences?.[category]??'';editMode='';backupDraft=[];renderNodeOptions(false)});
+        section.append(button);
+        if(category===selectedCategory){const detail=el('div',{className:'routing-category-detail'});detail.append(modeSection,actualPanel,saveActions,nFeedback);section.append(detail)}
+        cat.append(section)
+      }
+      const modeItems=[['','跟随方案默认','沿用方案内该分类的设置'],['@direct','直连','不使用代理节点'],['@proxy','全体自动','DAE 按健康和延迟选择'],['region','地区自动','只在所选地区的节点中自动选择'],['fixed','指定节点','固定使用一个节点，不会自动容灾'],['failover','主备容灾','主用加一至两个备用，按健康检查切换']];
+      for(const [value,label,detail] of modeItems){
+        const active=value==='region'?editMode==='region':value==='failover'?editMode==='failover':value==='fixed'?editMode==='fixed':draftPreference===value&&editMode==='';
+        const button=el('button',{type:'button',className:'choice-button'+(active?' active':'')});button.setAttribute('aria-pressed',String(active));button.append(el('span',{className:'choice-title'},label),el('span',{className:'choice-meta'},detail));
+        button.addEventListener('click',()=>{
+          if(value==='region'){editMode='region';if(!draftPreference.startsWith('@region:'))draftPreference=''}
+          else if(value==='fixed'){editMode='fixed';if(!inventory.some(n=>n.id===draftPreference))draftPreference=''}
+          else if(value==='failover'){editMode='failover';backupDraft=draftPreference.startsWith('@failover:')?draftPreference.slice(10).split(',').filter(Boolean):[];backupSlot=backupDraft.length<2?backupDraft.length:0;draftPreference='@failover:'+backupDraft.join(',')}
+          else{editMode='';draftPreference=value}
+          draftPreferences[selectedCategory]=draftPreference;renderNodeOptions(false)
+        });modes.append(button)
+      }
+      regionPanel.classList.toggle('hidden',editMode!=='region');backupPanel.classList.toggle('hidden',editMode!=='failover');
+      if(editMode==='region'){
+        const regionNames={HK:'香港',TW:'台湾',SG:'新加坡',JP:'日本',KR:'韩国',US:'美国',MY:'马来西亚',DE:'德国',GB:'英国'};
+        const counts={};for(const item of inventory)if(regionNames[item.region])counts[item.region]=(counts[item.region]||0)+1;
+        for(const [code,count] of Object.entries(counts)){const button=el('button',{type:'button',className:'choice-button'+(draftPreference==='@region:'+code?' active':'')});button.setAttribute('aria-pressed',String(draftPreference==='@region:'+code));button.append(el('span',{className:'choice-title'},regionNames[code]),el('span',{className:'choice-meta'},count+' 个已验证节点'));button.addEventListener('click',()=>{draftPreference='@region:'+code;draftPreferences[selectedCategory]=draftPreference;renderNodeOptions(false)});regionPanel.append(button)}
+        if(!regionPanel.childElementCount)regionPanel.append(el('p',{className:'choice-empty'},'当前节点名称未识别出可用地区，请改用全体自动或指定节点。'))
+      }
+      if(editMode==='failover'){
+        const slotNames=['主用','备用 1','备用 2'];for(let i=0;i<3;i++){const item=inventory.find(n=>n.id===backupDraft[i]),button=el('button',{type:'button',className:'choice-button'+(backupSlot===i?' active':'')});button.disabled=i>0&&!backupDraft[i-1];button.setAttribute('aria-pressed',String(backupSlot===i));button.append(el('span',{className:'choice-title'},slotNames[i]),el('span',{className:'choice-meta'},item?.name||'点击后在下方选节点'));button.addEventListener('click',()=>{backupSlot=i;renderNodeOptions(false)});backupPanel.append(button)}
+        if(backupDraft.length===3){const remove=el('button',{type:'button',className:'btn secondary compact'},'移除备用 2');remove.addEventListener('click',()=>{backupDraft.pop();backupSlot=1;draftPreference='@failover:'+backupDraft.join(',');draftPreferences[selectedCategory]=draftPreference;renderNodeOptions(false)});backupPanel.append(remove)}
+      }
+      actualCount.textContent=inventory.length+' 个 DAE 验证节点';nodeSearch.disabled=!inventory.length;
+      const chosenNode=inventory.find(item=>item.id===draftPreference);
+      if(editMode==='failover')actualNote.textContent='依次选择主用和至少一个备用。DAE 根据周期性健康检查切换，新连接才会使用新节点；不保证已建立连接无缝转移。';
+      else if(editMode==='region')actualNote.textContent='先选地区。自动只在该地区的已验证节点中择优；下面是本机候选节点，不是当前连接的实际出口。';
+      else if(draftPreference==='@direct')actualNote.textContent='当前分类设为直连，不使用代理节点。';
+      else if(chosenNode)actualNote.textContent='已配置固定节点：'+chosenNode.name+'。固定节点故障时不会自动换线。';
+      else actualNote.textContent='下方为设备已验证的候选节点。自动模式可能逐连接变化；目前没有运行时出口观测，不能把候选节点标成“实际正在使用”。';
+      if(selectedCategory==='HK-Broker'&&draftPreference==='@proxy')actualNote.textContent+=' 港澳证券建议限定香港节点，不要让全体自动选到其他地区。';
+      actualNodeList();nSave.disabled=editMode==='region'&&!draftPreference.startsWith('@region:')||editMode==='fixed'&&!chosenNode||editMode==='failover'&&backupDraft.length<2;
+      updateDraftFeedback()
+    }
+    nodeSearch.addEventListener('input',()=>actualNodeList());
+    nSave.addEventListener('click',async()=>{if(editMode==='failover'&&backupDraft.length<2||editMode==='region'&&!draftPreference.startsWith('@region:')||editMode==='fixed'&&!(state?.nodes||[]).some(n=>n.id===draftPreference)){nFeedback.textContent='请先完成节点或地区选择。';nFeedback.className='notice warn';return}nSave.disabled=true;nFeedback.textContent='正在保存到云端…';nFeedback.className='notice';const category=selectedCategory,value=draftPreference;try{const result=await api('/node-preference','POST',{category,node_id:value});const targetVersion=Number(result.config_version);if(!Number.isSafeInteger(targetVersion)||targetVersion<1)throw Error('云端已保存，但未返回可核对的配置版本；请刷新查看设备实际设置。');if((result.preferences?.[category]||'')!==value)throw Error('云端保存后此分类已被其他设置覆盖，请刷新查看。');pendingNodeSave={category,node_id:value,version:targetVersion};rememberPending();draftPreferences[category]=value;renderNodeOptions(false);scheduleNodeCheck(1500)}catch(e){nFeedback.textContent=e.message;nFeedback.className='error'}finally{nSave.disabled=editMode==='failover'&&backupDraft.length<2||editMode==='region'&&!draftPreference.startsWith('@region:')||editMode==='fixed'&&!(state?.nodes||[]).some(n=>n.id===draftPreference)}});
+    const override=card('临时全局模式','临时覆盖基础规则，到期后自动恢复；实际是否接管仍以本地代理开关为准。');override.id='customer-override';const oRow=el('div',{style:'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:15px'}),oAction=el('select',{id:'customer-override-action'}),duration=el('select',{id:'customer-override-duration'});addOption(oAction,'','跟随规则');addOption(oAction,'DIRECT','全局直连');addOption(oAction,'PROXY','全局代理');for(const [v,l] of [['5','5 分钟'],['10','10 分钟'],['30','30 分钟'],['60','1 小时'],['180','3 小时'],['360','6 小时']])addOption(duration,v,l);const oa=el('label',{className:'field',style:'margin-top:0'});oa.append(el('span',{},'模式'),oAction);const od=el('label',{className:'field',style:'margin-top:0'});od.append(el('span',{},'持续时间'),duration);oRow.append(oa,od);const oSave=el('button',{className:'btn'},'应用临时模式'),oFeedback=el('div',{id:'customer-override-feedback',className:'error',role:'status'});override.append(oRow,el('div',{className:'actions'}));const oCancel=el('button',{type:'button',className:'btn secondary',id:'customer-override-cancel'},'取消临时模式');override.lastChild.append(oSave,oCancel);override.append(oFeedback);
+    oCancel.addEventListener('click',async()=>{oCancel.disabled=true;oSave.disabled=true;try{await api('/override','POST',{action:'',duration_minutes:0});oAction.value='';oFeedback.textContent='已取消临时模式，设备同步后恢复基础规则。';oFeedback.className='notice good';await refresh()}catch(e){oFeedback.textContent=e.message;oFeedback.className='error'}finally{oCancel.disabled=false;oSave.disabled=false}});
+    oSave.addEventListener('click',async()=>{oSave.disabled=true;oCancel.disabled=true;oFeedback.textContent='';try{await api('/override','POST',{action:oAction.value,duration_minutes:Number(duration.value)});oFeedback.textContent='临时模式已保存。';oFeedback.className='notice good';await refresh()}catch(e){oFeedback.textContent=e.message;oFeedback.className='error'}finally{oSave.disabled=false;oCancel.disabled=false}});
+    const packages=card('分流方案','选择规则来源；更新只更新该方案的规则，保留自定义设置。');packages.classList.add('wide-card');
+    const packageSelect=el('select',{id:'customer-package'}),packageLabel=el('label',{className:'field'});
+    packageLabel.append(el('span',{},'规则方案'),packageSelect);
+    const packageUse=el('button',{type:'button',className:'btn'},'使用此方案'),packageUpdate=el('button',{type:'button',className:'btn secondary'},'检查并更新规则'),packageRefresh=el('button',{type:'button',className:'btn secondary'},'刷新更新状态'),packageStatus=el('div',{className:'notice',id:'package-status',role:'status'});
+    const packageActions=el('div',{className:'actions'});packageActions.append(packageUse,packageUpdate,packageRefresh);packages.append(packageLabel,packageActions,packageStatus);
+    function renderPackage(){const chosen=packageSelect.value;packageSelect.replaceChildren();for(const p of (state.rule_packages||[]))addOption(packageSelect,p.id,p.name+(p.available?'':'（尚未就绪）'));packageSelect.value=chosen||state.device?.profile||'';if(!packageSelect.value)packageSelect.selectedIndex=0;describePackage();}
+    function describePackage(){const p=(state?.rule_packages||[]).find(p=>p.id===packageSelect.value);packageUse.disabled=!p?.available;packageStatus.textContent='当前方案：'+((state?.rule_packages||[]).find(p=>p.id===state?.device?.profile)?.name||'旧版测试规则')+'。'+(p?.available?'云端版本：'+p.version.slice(0,12)+'；更新时间：'+new Date(p.published_at).toLocaleString()+'。':'该方案尚无通过校验的版本。')+(p?.update?.state==='failed'?' 最近更新失败，保留旧版：'+p.update.error:'')+' 选择后由设备拉取并验证，云端发布不代表设备已应用。';}
+    packageSelect.addEventListener('change',describePackage);
+    async function packageOperation(operation){packageUse.disabled=true;packageUpdate.disabled=true;try{const data=await api('/rule-package','POST',{operation,profile:packageSelect.value});await refresh();packageStatus.textContent=data.message}catch(e){packageStatus.textContent=e.message}finally{packageUpdate.disabled=false;const p=(state?.rule_packages||[]).find(p=>p.id===packageSelect.value);packageUse.disabled=!p?.available}}
+    packageUse.addEventListener('click',()=>packageOperation('select'));packageUpdate.addEventListener('click',()=>packageOperation('update'));packageRefresh.addEventListener('click',refresh);
+    grid.prepend(packages);grid.append(rules,nodes,override);
+    function actionLabel(actionValue){const raw=String(actionValue||'');if(raw.startsWith('NODE:')){const id=raw.slice(5),selected=(state?.nodes||[]).find(n=>n.id===id);return selected?'节点 · '+(selected.name||selected.id):'节点已不可用 · '+id}if(raw.startsWith('GROUP:'))return '节点组 · '+raw.slice(6);return ({DIRECT:'直连',PROXY:'代理',AUTO:'自动选择',BLOCK:'阻断'})[raw]||raw}
+    function render(){
+      if(!state)return;renderPackage();renderNodeOptions();oAction.value=state.device?.customer_override_action||'';while(action.options.length>4)action.remove(4);const groups=[...new Set((state.nodes||[]).map(n=>n.group).filter(Boolean))];for(const group of groups)addOption(action,'GROUP:'+group,'节点组 · '+group);for(const n of (state.nodes||[]))addOption(action,'NODE:'+n.id,'节点 · '+(n.name||n.id));
+      list.replaceChildren();const rulesList=state.rules||[];if(!rulesList.length){list.append(el('p',{className:'help'},'尚未添加自定义规则。'));return}
+      for(const rule of rulesList){const matchLabel=rule.match_type==='cidr'||rule.match_type==='ip'||rule.match_type==='ip_cidr'?'IP/CIDR':rule.match_type==='domain_suffix'?'域名及子域名':'完整域名',row=el('div',{style:'display:flex;justify-content:space-between;gap:10px;align-items:center'}),summary=el('span',{},`${rule.match_value} · ${matchLabel} · ${actionLabel(rule.action)}`),buttons=el('span',{}),edit=el('button',{className:'btn secondary'},'编辑'),del=el('button',{className:'btn secondary'},'删除');edit.style.marginRight='6px';edit.addEventListener('click',()=>{type.value=rule.match_type;updateMatchField();editingRule=rule.id;value.value=rule.match_value;action.value=rule.action;save.textContent='保存修改';value.focus()});del.addEventListener('click',async()=>{if(!confirm('确定删除这条自定义规则？'))return;del.disabled=true;try{await api('/rules/delete','POST',{id:rule.id});await refresh()}catch(e){feedback.textContent=e.message}finally{del.disabled=false}});buttons.append(edit,del);row.append(summary,buttons);list.append(row)}
+    }
+    let loading=false;
+    function unavailable(label){for(const group of [cat,modes,actualGrid]){group.replaceChildren();group.append(el('p',{className:'choice-empty'},label))}actualNote.textContent='';actualCount.textContent='';nodeSearch.disabled=true;for(const control of nodeControls)control.disabled=true;}
+    async function refresh(){
+      if(loading||app.classList.contains('hidden'))return;
+      loading=true;retry.disabled=true;unavailable('正在加载…');
+      try{state=await api('/me');restorePending();render();if(pendingNodeSave){draftPreferences[pendingNodeSave.category]=pendingNodeSave.node_id;if(selectedCategory===pendingNodeSave.category)draftPreference=pendingNodeSave.node_id;renderNodeOptions(false);scheduleNodeCheck(300)}sync.textContent=(state.nodes||[]).length?'规则和本机 DAE 已验证的候选节点已加载；实际出口需以运行观测为准。':'暂无本机已验证节点，请先确认订阅同步状态。';sync.className='notice';retry.classList.add('hidden')}
+      catch(e){state=null;unavailable('加载失败，请点击下方重试');sync.textContent=e.message;sync.className='notice warn';retry.classList.remove('hidden')}
+      finally{loading=false;retry.disabled=false}
+    }
+    window.tyCustomerRefresh=refresh;
+    const sync=el('div',{id:'customer-sync-status',className:'notice',role:'status'},'登录后加载规则和节点。');
+    const retry=el('button',{type:'button',className:'btn secondary compact hidden'},'重新加载');retry.addEventListener('click',refresh);
+    const syncBox=el('div',{className:'sync-feedback'});syncBox.append(sync,retry);nodeSync.append(syncBox);unavailable('等待加载');refresh();
+  }
+  const observer=new MutationObserver(()=>{build()});observer.observe(app,{childList:true,subtree:true});build();
+  let wasHidden=app.classList.contains('hidden');
+  new MutationObserver(()=>{const hidden=app.classList.contains('hidden');if(wasHidden&&!hidden)window.tyCustomerRefresh?.();wasHidden=hidden}).observe(app,{attributes:true,attributeFilter:['class']});
+})();
+</script>
+<script>
+(()=>{
+const $=id=>document.getElementById(id);let initial=null,networkPreviewReady=false,detectedGateway='',addressApplyAvailable=false;
+async function api(path,method='GET',body,timeoutMs=130000){const headers={};if(body)headers['Content-Type']='application/json';const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);try{const r=await fetch('/api'+path,{method,headers,body:body?JSON.stringify(body):undefined,credentials:'same-origin',cache:'no-store',signal:controller.signal});if(r.status===204)return null;const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'请求未完成，请稍后重试');return d}finally{clearTimeout(timer)}}
+let proxyStatusTimer,proxyState=null,proxyBusy=false;
+function ensureProxyControl(){
+ if($('proxyCard'))return;
+ const grid=document.querySelector('#appView .grid'),device=grid?.querySelector('.card.device');if(!grid||!device)return;
+ const card=document.createElement('section');card.id='proxyCard';card.className='card';
+ const title=document.createElement('h2');title.textContent='科学上网';
+ const intro=document.createElement('p');intro.className='muted';intro.textContent='开启后，使用 OEC 作为网关的局域网设备按订阅规则分流；未命中代理规则的流量仍按配置直连。';
+ const row=document.createElement('label');row.style.cssText='display:flex;align-items:center;gap:12px;margin-top:18px;cursor:pointer';
+ const toggle=document.createElement('input');toggle.id='proxySwitch';toggle.type='checkbox';toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','开启或关闭 dae 规则代理');toggle.style.cssText='width:22px;height:22px;accent-color:#5547d9';
+ const label=document.createElement('span');label.id='proxySwitchLabel';label.style.fontWeight='750';label.textContent='科学上网已关闭';
+ row.append(toggle,label);
+ const status=document.createElement('div');status.id='proxyRuntime';status.className='notice warn';status.setAttribute('role','status');status.setAttribute('aria-live','polite');status.textContent='正在读取 dae 运行状态…';
+ const feedback=document.createElement('div');feedback.id='proxyFeedback';feedback.className='error';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');
+ const help=document.createElement('p');help.className='help';help.textContent='切换会影响所有把 OEC 设为网关的设备。开启前需在管理端绑定有效订阅并同步节点；主路由和 DHCP 设置不会被更改。';
+ card.append(title,intro,row,status,feedback,help);grid.insertBefore(card,device.nextSibling);
+ toggle.addEventListener('change',async()=>{
+  const enabled=toggle.checked,previous=proxyState?.enabled??false;
+  if(enabled&&!confirm('开启后，所有以 OEC 为网关的局域网设备将按 dae 规则分流。确认开启？')){toggle.checked=previous;return}
+  proxyBusy=true;toggle.disabled=true;$('proxyFeedback').textContent='正在校验订阅并应用 dae 配置…';$('proxyFeedback').className='help';
+  try{const result=await api('/proxy','POST',{enabled});proxyState=result;toggle.checked=!!result.enabled;paintProxyStatus(result);if(result.error){$('proxyFeedback').textContent=result.error;$('proxyFeedback').className='error'}else{$('proxyFeedback').textContent=enabled?(result.applied?'已应用，客户端按规则分流。':'已保存；云端临时全局直连当前优先生效。'):'已应用。代理规则已关闭。';$('proxyFeedback').className='notice good'}}
+  catch(e){toggle.checked=previous;$('proxyFeedback').textContent=e.message;$('proxyFeedback').className='error'}
+  finally{proxyBusy=false;toggle.disabled=false}
+ });
+}
+function paintProxyStatus(state){
+ const toggle=$('proxySwitch');if(!toggle)return;toggle.checked=!!state.enabled;toggle.disabled=proxyBusy;
+ $('proxySwitchLabel').textContent=state.enabled?(state.daemon_active?'科学上网已开启':'科学上网待恢复'):(state.daemon_active?'关闭尚未完成':'科学上网已关闭');
+ const status=$('proxyRuntime');
+ if(state.error){status.textContent=state.error;status.className='notice warn'}
+ else if(!state.enabled&&!state.daemon_active){status.textContent='dae 已停止；重启后仍保持关闭。';status.className='notice good'}
+ else if(!state.enabled&&state.daemon_active){status.textContent='关闭尚未完成：dae 仍在运行，请暂勿让客户端通过 OEC 网关上网。';status.className='notice warn'}
+ else if(state.enabled&&!state.daemon_active){status.textContent='已保存开启，但 dae 尚未运行；正在用本机缓存恢复。';status.className='notice warn'}
+ else if(state.enabled&&state.daemon_active&&state.ready&&state.applied&&state.subscription_available&&state.node_count>0){status.textContent='dae 运行正常，代理规则已应用，已确认 '+state.node_count+' 个节点。';status.className='notice good'}
+ else if(state.enabled&&state.applied){status.textContent='dae 收到代理配置，但尚未确认可用订阅节点；请勿让客户端通过 OEC 网关上网。';status.className='notice warn'}
+ else if(state.enabled&&!state.applied){status.textContent='开关已请求开启，但 dae 未确认应用代理策略；请勿让客户端通过 OEC 网关上网。';status.className='notice warn'}
+ else{status.textContent='已请求关闭，但 dae 尚未确认恢复直连；请暂勿让客户端通过 OEC 网关上网。';status.className='notice warn'}
+ if(state.rules_version)status.textContent+=' 设备最近应用规则版本：'+state.rules_version.slice(0,12)+'。';
+}
+async function refreshProxyStatus(){
+ clearTimeout(proxyStatusTimer);if(!$('appView')||$('appView').classList.contains('hidden'))return;
+ try{proxyState=await api('/proxy','GET',undefined,6000);paintProxyStatus(proxyState);if(proxyState.error){$('proxyFeedback').textContent=proxyState.error;$('proxyFeedback').className='error'}}
+ catch(e){$('proxyRuntime').textContent=e.name==='AbortError'?'读取 DAE 状态超时，请检查本机代理控制服务。':'暂时无法读取 DAE 状态：'+e.message;$('proxyRuntime').className='notice warn';$('proxySwitch').disabled=true}
+ proxyStatusTimer=setTimeout(()=>refreshProxyStatus(),15000);
+}
+function error(id,msg){$(id).textContent=msg||''}
+function replaceContent(target,...nodes){while(target.firstChild)target.removeChild(target.firstChild);for(const node of nodes)target.appendChild(node)}
+function showApp(state){ensureProxyControl();detectedGateway=state.default_gateway||'';addressApplyAvailable=!!state.address_apply_available;ensureNetworkPreview();$('saveNetwork').textContent=addressApplyAvailable?'保存并应用配置':'检查并保存预设';$('authView').classList.add('hidden');$('appView').classList.remove('hidden');$('networkBadge').textContent='本地访问';$('networkBadge').className='badge good';$('deviceCode').textContent=state.device_code||'尚未识别';$('interfaceName').textContent=state.interface||'未识别';replaceContent($('addresses'),...(state.addresses||[]).map(v=>{const e=document.createElement('div');e.textContent=v;return e}));$('stateBadge').textContent=addressApplyAvailable?'正在读取运行状态':'网络服务不可用';$('stateBadge').className='badge';const current=(state.addresses||[]).find(v=>v.includes('.')&&v.includes('/'));if(current&&!$('planAddress').value)$('planAddress').value=current;if(detectedGateway&&!$('planGateway').value)$('planGateway').value=detectedGateway;refreshProxyStatus();if(addressApplyAvailable)checkAddressApply()}
+async function checkAddressApply(){
+ $('saveNetwork').textContent='保存并应用配置';refreshLANStatus();
+ const form=$('planAddress').closest('form');let status=$('addressApplyStatus');if(!status){status=document.createElement('div');status.id='addressApplyStatus';status.className='notice';status.setAttribute('role','status');form.prepend(status)}
+ try{let state=await api('/network/apply');if(state.phase==='awaiting_login'){status.textContent='正在确认您已通过新地址登录…';state=await api('/network/apply/confirm','POST',{})}status.textContent=state.phase==='committed'?'管理地址已确认。下面的 DHCP/DNS 开关可单独保存并应用。':state.message||'修改 IP 后请先使用“仅应用管理地址”，再配置 DHCP/DNS。';status.className='notice '+(state.phase==='committed'?'good':'warn');if(['queued','applying'].includes(state.phase)){setTimeout(checkAddressApply,2000)}}catch(e){status.className='notice warn';status.textContent='地址状态：'+e.message}
+}
+let lanStatusTimer;
+async function refreshLANStatus(){
+ clearTimeout(lanStatusTimer);let el=$('lanRuntime');if(!el){el=document.createElement('div');el.id='lanRuntime';el.className='notice';el.setAttribute('role','status');$('planAddress').closest('form').prepend(el)}
+ try{const state=await api('/network/services');el.textContent=`实际运行状态：DHCP ${state.dhcp_active?'运行中':'已关闭'} · 局域网 DNS ${state.lan_dns_active?'运行中':'已关闭'} · ${state.dhcp_active?state.reservation_count:0} 条生效的地址绑定`;if(!['active','inactive','unknown'].includes(state.service_state))el.textContent+='；服务状态：'+state.service_state;$('stateBadge').textContent=state.dhcp_active?'DHCP 已开启':state.lan_dns_active?'DNS 已开启':'DHCP / DNS 已关闭';el.className='notice '+(state.dhcp_active||state.lan_dns_active?'good':'warn')}catch(e){el.textContent='运行状态读取失败：'+e.message;el.className='notice warn';$('stateBadge').textContent='运行状态未知'}
+ lanStatusTimer=setTimeout(()=>{if(!$('appView').classList.contains('hidden'))refreshLANStatus()},15000);
+}
+function showAuth(setup){$('appView').classList.add('hidden');$('authView').classList.remove('hidden');$('authTitle').textContent=setup?'首次设置本地密码':'登录设备管理';$('authIntro').textContent=setup?'为这台 OEC 设置独立的本地管理密码。':'输入本地管理密码以继续。';$('passwordField').classList.remove('hidden');$('authButton').classList.remove('hidden');$('authButton').textContent=setup?'设置密码并进入':'登录';$('passwordLabel').textContent=setup?'新密码（至少 12 个字符）':'管理密码';$('password').value='';$('password').autocomplete=setup?'new-password':'current-password';$('confirmField').classList.toggle('hidden',!setup);$('deviceCodeSetup').classList.toggle('hidden',!setup);$('deviceCodeSetup').textContent=setup?'设备码：'+(initial?.device_code||'尚未识别')+'。设备码用于识别，不是密码。':'';$('recoveryEntry').classList.toggle('hidden',setup||!initial?.recovery_enabled);$('recoveryPanel').classList.add('hidden');$('networkBadge').textContent=setup?'首次设置': '需要登录';$('networkBadge').className='badge';error('authError','')}
+function showUnavailable(message){$('appView').classList.add('hidden');$('authView').classList.remove('hidden');$('authTitle').textContent='暂时无法连接设备';$('authIntro').textContent='无法确认本地密码状态，请检查局域网连接后刷新页面。';$('passwordField').classList.add('hidden');$('confirmField').classList.add('hidden');$('deviceCodeSetup').classList.add('hidden');$('authButton').classList.add('hidden');$('recoveryEntry').classList.add('hidden');$('networkBadge').textContent='设备暂不可用';$('networkBadge').className='badge';error('authError',message||'无法读取设备状态。')}
+async function load(){try{initial=await api('/status');if(!initial||typeof initial.setup_required!=='boolean')throw Error('设备状态响应无效');if(initial.setup_required){showAuth(true);return}}catch(e){showUnavailable(e.message);return}try{const state=await api('/session');showApp(state);loadNetworkSettings();$('recoveryStatus').textContent=initial.recovery_enabled?'本机已配置离线恢复公钥。恢复仍需服务支持签发本设备的一次性授权。':'本机尚未配置恢复公钥；请使用当前本地登录方式，待维护时完成密钥配置。';$('openRecovery').disabled=!initial.recovery_enabled;$('openRecovery').classList.toggle('hidden',!initial.recovery_enabled)}catch(e){showAuth(false)}}
+$('authButton').addEventListener('click',async()=>{error('authError','');if(!initial||typeof initial.setup_required!=='boolean'){error('authError','尚未确认设备状态，请刷新页面重试。');return}const setup=initial.setup_required,password=$('password').value;if(setup&&password!==$('confirmPassword').value){error('authError','两次输入的密码不一致。');return}if([...password].length<12){error('authError','密码至少需要 12 个字符。');return}try{await api(setup?'/setup':'/login','POST',{password});if(setup)initial.setup_required=false;const state=await api('/state');showApp(state);loadNetworkSettings();$('recoveryStatus').textContent=initial.recovery_enabled?'本机已配置离线恢复公钥。恢复仍需服务支持签发本设备的一次性授权。':'本机尚未配置恢复公钥；请使用当前本地登录方式，待维护时完成密钥配置。';$('openRecovery').disabled=!initial.recovery_enabled;$('openRecovery').classList.toggle('hidden',!initial.recovery_enabled)}catch(e){error('authError',e.message)}});
+$('password').addEventListener('keydown',e=>{if(e.key==='Enter')$('authButton').click()});$('confirmPassword').addEventListener('keydown',e=>{if(e.key==='Enter')$('authButton').click()});
+$('logout').addEventListener('click',async()=>{try{await api('/logout','POST',{})}catch{}showAuth(false)});
+$('changePassword').addEventListener('click',async()=>{error('passwordResult','');if($('newPassword').value!==$('newPassword2').value){error('passwordResult','两次输入的新密码不一致。');return}try{await api('/password','POST',{current_password:$('currentPassword').value,new_password:$('newPassword').value});showAuth(false);error('authError','密码已更新，请使用新密码重新登录。')}catch(e){error('passwordResult',e.message)}});
+function openRecovery(){if(!initial?.recovery_enabled)return;$('recoveryPanel').classList.remove('hidden');$('passwordField').classList.add('hidden');$('confirmField').classList.add('hidden');$('authButton').classList.add('hidden');$('authError').textContent='';$('authView').classList.remove('hidden');$('appView').classList.add('hidden');$('authTitle').textContent='离线密码恢复';$('authIntro').textContent='生成本设备挑战，并联系服务支持获取一次性授权。';$('recoveryEntry').classList.add('hidden')}
+$('showRecovery').addEventListener('click',openRecovery);$('openRecovery').addEventListener('click',async()=>{openRecovery();await createChallenge('challengeBox','recoveryError')});$('backToLogin').addEventListener('click',()=>showAuth(false));
+async function createChallenge(boxId,errorId){error(errorId,'');try{const d=await api('/recovery/challenge','POST',{});$(boxId).classList.remove('hidden');$(boxId).textContent='设备码：'+d.device_code+'　挑战码：'+d.challenge+'　有效至：'+new Date(d.expires_at).toLocaleTimeString()}catch(e){error(errorId,e.message)}}
+$('getChallenge').addEventListener('click',()=>createChallenge('challengeBox','recoveryError'));
+$('resetPassword').addEventListener('click',async()=>{error('recoveryError','');if($('recoveryPassword').value!==$('recoveryPassword2').value){error('recoveryError','两次输入的新密码不一致。');return}try{await api('/recovery/reset','POST',{challenge:$('challengeBox').textContent.match(/挑战码：([A-Z2-7]{26})/)?.[1]||'',authorization:$('authorization').value.trim(),new_password:$('recoveryPassword').value});showAuth(false);error('authError','密码已重置，请使用新密码登录。')}catch(e){error('recoveryError',e.message)}});
+function addNetworkPreview(){
+ const card=[...document.querySelectorAll('.grid .card')].find(x=>x.querySelector('h2')?.textContent==='网络功能');
+ if(!card)return;
+ card.querySelector('h2').textContent='局域网配置';
+ card.querySelector('.muted').textContent='保存并应用配置会实际启动或停止 DHCP、局域网 DNS，并更新 IP/MAC 绑定。修改 OEC 地址时，请先应用管理地址。';
+ card.querySelector('.notice').textContent='启用 OEC DHCP 前，请关闭主路由 DHCP 并核对地址池及固定地址。客户端重新获取租约后，网关与 DNS 将指向 OEC。此版本按 IPv4-only 运行：如果家庭网络启用了 IPv6，请先在上级路由器关闭 IPv6，否则 IPv6 流量可能绕过 OEC。';
+ const form=document.createElement('form');form.noValidate=true;
+ function field(labelText,id,placeholder){const label=document.createElement('label');label.className='field';const title=document.createElement('span');title.textContent=labelText;const input=document.createElement('input');input.id=id;input.type='text';input.placeholder=placeholder;input.autocomplete='off';label.append(title,input);return label}
+ form.append(field('OEC 固定管理地址（含网段）','planAddress','例如 10.23.42.10/24'));
+ const clientGatewayHelp=document.createElement('p');clientGatewayHelp.className='help';clientGatewayHelp.textContent='OEC 提供 DHCP 时，将自动把自身 IP 作为客户端网关和 DNS。';form.append(clientGatewayHelp);
+ form.append(field('OEC 自身的上游网关（主路由 LAN 地址）','planGateway',detectedGateway?'当前检测到：'+detectedGateway:'请输入主路由器的 LAN 地址'));
+ const upstreamGatewayHelp=document.createElement('p');upstreamGatewayHelp.className='help';upstreamGatewayHelp.textContent='这是 OEC 自己访问外网时使用的上游网关，不是客户端网关。';form.append(upstreamGatewayHelp);
+ const addressButton=document.createElement('button');addressButton.type='submit';addressButton.className='btn secondary';addressButton.textContent='仅应用管理地址';form.append(addressButton);
+ const dhcpLabel=document.createElement('label');dhcpLabel.className='field';dhcpLabel.style.display='flex';dhcpLabel.style.alignItems='center';dhcpLabel.style.gap='10px';const dhcp=document.createElement('input');dhcp.id='planDhcp';dhcp.type='checkbox';dhcp.style.width='auto';dhcp.style.height='auto';const dhcpText=document.createElement('span');dhcpText.textContent='启用 DHCP：由 OEC 分配地址和客户端网关';dhcpLabel.append(dhcp,dhcpText);form.append(dhcpLabel);
+ const takeoverLabel=document.createElement('label');takeoverLabel.className='field';takeoverLabel.style.display='flex';takeoverLabel.style.alignItems='center';takeoverLabel.style.gap='10px';const takeover=document.createElement('input');takeover.id='routerDhcpOff';takeover.type='checkbox';takeover.style.width='auto';takeover.style.height='auto';const takeoverText=document.createElement('span');takeoverText.textContent='我已关闭主路由 DHCP，并核对原有固定 IP / MAC 绑定';takeoverLabel.append(takeover,takeoverText);form.append(takeoverLabel);
+ const poolStart=field('DHCP 地址池起始地址','planPoolStart','例如 10.23.42.100');const poolEnd=field('DHCP 地址池结束地址','planPoolEnd','例如 10.23.42.200');
+ const dnsToggleLabel=document.createElement('label');dnsToggleLabel.className='field';dnsToggleLabel.style.display='flex';dnsToggleLabel.style.alignItems='center';dnsToggleLabel.style.gap='10px';const dnsEnabled=document.createElement('input');dnsEnabled.id='planDnsEnabled';dnsEnabled.type='checkbox';dnsEnabled.style.width='auto';dnsEnabled.style.height='auto';const dnsToggleText=document.createElement('span');dnsToggleText.textContent='启用局域网 DNS：由 OEC 转发域名查询';dnsToggleLabel.append(dnsEnabled,dnsToggleText);form.append(dnsToggleLabel);
+ const dnsLabel=document.createElement('label');dnsLabel.className='field';const dnsTitle=document.createElement('span');dnsTitle.textContent='局域网 DNS 的上游服务器';const dnsMode=document.createElement('select');dnsMode.id='planDnsMode';for(const [value,label] of [['router','通过主路由转发'],['custom','手动指定 DNS']]){const option=document.createElement('option');option.value=value;option.textContent=label;dnsMode.append(option)}dnsMode.style.height='43px';dnsMode.style.border='1px solid #cfd5df';dnsMode.style.borderRadius='9px';dnsMode.style.padding='9px 11px';dnsMode.style.background='white';dnsLabel.append(dnsTitle,dnsMode);form.append(dnsLabel);
+ const dns1=field('首选 DNS','planDns1','例如 1.1.1.1');const dns2=field('备用 DNS（可选）','planDns2','例如 8.8.8.8');
+ form.append(poolStart,poolEnd,dns1,dns2);
+ const updateFields=()=>{poolStart.classList.toggle('hidden',!dhcp.checked);poolEnd.classList.toggle('hidden',!dhcp.checked);dns1.classList.toggle('hidden',dnsMode.value!=='custom');dns2.classList.toggle('hidden',dnsMode.value!=='custom')};dhcp.addEventListener('change',updateFields);dnsMode.addEventListener('change',updateFields);updateFields();
+ const reservationTitle=document.createElement('h3');reservationTitle.textContent='固定设备 IP / MAC';reservationTitle.style.margin='18px 0 0';form.append(reservationTitle);
+ const reservationName=field('设备备注（可选）','reservationName','例如 客厅电视');const reservationMAC=field('设备 MAC 地址','reservationMAC','例如 02:11:22:33:44:55');const reservationIP=field('固定内网 IP','reservationIP','例如 10.23.42.20');const bindingFields=document.createElement('div');bindingFields.className='binding-fields';bindingFields.append(reservationName,reservationMAC,reservationIP);form.append(bindingFields);
+ const addReservation=document.createElement('button');addReservation.type='button';addReservation.className='btn secondary';addReservation.textContent='添加地址绑定';const bindingActions=document.createElement('div');bindingActions.className='actions';bindingActions.append(addReservation);form.append(bindingActions);
+ const reservationList=document.createElement('div');reservationList.className='address-list';form.append(reservationList);
+ const reservations=[];window.tyReservations=reservations;
+ function renderReservations(){replaceContent(reservationList);if(!reservations.length){const empty=document.createElement('p');empty.className='help';empty.textContent='尚未添加固定地址。';reservationList.appendChild(empty);return}reservations.forEach((item,index)=>{const row=document.createElement('div');row.style.display='flex';row.style.justifyContent='space-between';row.style.gap='10px';row.style.alignItems='center';const summary=document.createElement('span');summary.textContent=`${item.name||'未备注'} · ${item.mac} → ${item.ip}`;const remove=document.createElement('button');remove.type='button';remove.className='btn secondary';remove.textContent='移除';remove.addEventListener('click',()=>{reservations.splice(index,1);renderReservations()});row.append(summary,remove);reservationList.append(row)})}window.tyRenderReservations=renderReservations;
+ addReservation.addEventListener('click',()=>{const mac=reservationMAC.querySelector('input').value.trim(),ip=reservationIP.querySelector('input').value.trim(),name=reservationName.querySelector('input').value.trim();if(!mac||!ip){result.className='notice warn';result.textContent='请填写设备 MAC 和固定 IP。';return}reservations.push({name,mac,ip});reservationMAC.querySelector('input').value='';reservationIP.querySelector('input').value='';reservationName.querySelector('input').value='';renderReservations()});renderReservations();
+ const button=document.createElement('button');button.id='saveNetwork';button.type='submit';button.className='btn';button.textContent='保存并应用配置';const saveActions=document.createElement('div');saveActions.className='actions network-save-actions';saveActions.append(button);form.append(saveActions);
+ const result=document.createElement('div');result.className='notice hidden';result.setAttribute('role','status');result.setAttribute('aria-live','polite');
+ const revealResult=()=>{if(typeof result.scrollIntoView==='function')result.scrollIntoView()};
+ form.addEventListener('submit',async event=>{
+  event.preventDefault();const addressOnly=event.submitter===addressButton;result.className='notice warn';result.textContent='正在检查配置…';button.disabled=true;addressButton.disabled=true;button.textContent='正在检查…';revealResult();let switching=false;
+  try {
+   const address=$('planAddress').value.trim(),gateway=$('planGateway').value.trim(),addressIP=address.split('/')[0],servers=dnsMode.value==='custom'?[dns1.querySelector('input').value.trim(),dns2.querySelector('input').value.trim()].filter(Boolean):[];
+   if(!address||!gateway)throw Error('请先填写 OEC 管理地址和主路由上游网关。');
+   if(addressIP===gateway)throw Error('主路由上游网关不能与 OEC 固定管理地址相同。请填写主路由 LAN 地址'+(detectedGateway?'（本机检测到 '+detectedGateway+'）':'')+'。');
+   if(dhcp.checked&&!dnsEnabled.checked)throw Error('启用 DHCP 时请同时启用局域网 DNS。');
+   if(!addressOnly&&dhcp.checked&&!takeover.checked)throw Error('请先关闭主路由 DHCP，再勾选确认项。');
+   if(dnsMode.value==='custom'&&!servers.length)throw Error('手动指定 DNS 时至少填写一个 DNS 地址。');
+   const plan={address_cidr:address,gateway,dhcp_enabled:dhcp.checked,pool_start:dhcp.checked?$('planPoolStart').value.trim():'',pool_end:dhcp.checked?$('planPoolEnd').value.trim():'',dns_mode:dnsMode.value,dns_servers:servers};
+   const preview=await api('/network/preview','POST',plan);
+   if(addressApplyAvailable&&!confirm(addressOnly?`将 OEC 地址切换为 ${preview.address_cidr}，上游网关为 ${preview.gateway}。请在约 3 分钟内到新地址重新登录，否则自动恢复。继续？`:`应用局域网配置：DHCP ${dhcp.checked?'开启':'关闭'}，DNS ${dnsEnabled.checked?'开启':'关闭'}，固定绑定 ${reservations.length} 条。继续？`)){result.textContent='已取消，未保存或应用。';return}
+   const saved=await api('/network/settings','PUT',{plan,dns_enabled:dnsEnabled.checked,reservations});
+   if(!addressApplyAvailable){result.textContent='预设已保存；本机未配置地址切换服务，当前地址未改变。';return}
+   if(!addressOnly){result.textContent='正在检查 DHCP 冲突并应用配置…';const active=await api('/network/services','POST',{settings:saved.settings,router_dhcp_off:takeover.checked});result.textContent=active.message+(active.dhcp_active?' 客户端重新连接网络、获取新租约后，网关和 DNS 才会更新。':'');result.className='notice good';await refreshLANStatus();return}
+   result.textContent='预设已保存，正在探测地址冲突并准备切换，请勿重复点击…';
+   const applied=await api('/network/apply','POST',saved.settings.plan);
+   const target=new URL(location.href);target.hostname=applied.target_ip;target.pathname='/';target.search='';target.hash='';
+   const summary=document.createElement('p');summary.textContent=`正在切换到 ${applied.target_ip}。请在 ${new Date(applied.deadline*1000).toLocaleTimeString()} 前重新登录以保留新地址；超时恢复原配置。8 秒后自动跳转，若尚未连接请稍后刷新。`;
+   const link=document.createElement('a');link.href=target.href;link.textContent='打开新地址并重新登录';
+   replaceContent(result,summary,link);result.className='notice good';switching=true;setTimeout(()=>location.assign(target.href),8000);
+  }catch(e){result.textContent=(e instanceof Error?e.message:'保存失败')+(addressOnly?' 地址未确认时，请在约三分钟后检查原地址。':'');result.className='notice warn';refreshLANStatus()}
+  finally{button.disabled=switching;addressButton.disabled=switching;button.textContent=switching?'正在切换地址…':addressApplyAvailable?'保存并应用配置':'检查并保存预设';revealResult()}
+ });
+ // Attach feedback to the form before mounting it: afterward .help also matches
+ // descendants inside the form, which are not direct children of the card.
+ form.append(result);card.insertBefore(form,card.querySelector('.help'));
+}
+function ensureNetworkPreview(){if(networkPreviewReady)return;addNetworkPreview();networkPreviewReady=true}
+async function loadNetworkSettings(){try{const response=await api('/network/settings');const settings=response.settings||{};const plan=settings.plan||{};if(plan.address_cidr)$('planAddress').value=plan.address_cidr;if(plan.gateway)$('planGateway').value=plan.gateway;$('planDhcp').checked=!!plan.dhcp_enabled;$('planPoolStart').value=plan.pool_start||'';$('planPoolEnd').value=plan.pool_end||'';$('planDnsEnabled').checked=!!settings.dns_enabled;$('planDnsMode').value=plan.dns_mode||'router';const dns=plan.dns_servers||[];$('planDns1').value=dns[0]||'';$('planDns2').value=dns[1]||'';window.tyReservations.splice(0,window.tyReservations.length,...(settings.reservations||[]));window.tyRenderReservations();document.querySelector('#planDhcp').dispatchEvent(new Event('change'));document.querySelector('#planDnsMode').dispatchEvent(new Event('change'));if(settings.updated_at){let saved=$('lastNetworkSave');if(!saved){saved=document.createElement('p');saved.id='lastNetworkSave';saved.className='help';$('planAddress').closest('form').append(saved)}saved.textContent='上次保存：'+new Date(settings.updated_at).toLocaleString()+(response.applied?'；与已应用配置一致。':'；方案已保存，尚有未应用变更。')}}catch(e){const result=$('planAddress')?.closest('form')?.querySelector('[aria-live=polite]');if(result){result.className='notice warn';result.textContent='本机预设读取失败，请刷新页面后重试。'}}}
+load();
+})();
+</script>
+<script>
+(()=>{
+  const app=document.getElementById('appView');
+  if(!app)return;
+  let current='network';
+  let softwareBusy=false,softwareUpdating=false,softwarePoll=0;
+  async function softwareRequest(path,method='GET'){
+    const response=await fetch('/api/software/'+path,{method,credentials:'same-origin',cache:'no-store'});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw Error(response.status===401?'登录已过期，请重新登录后重试。':data.error||'软件更新服务暂时不可用。');
+    return data;
+  }
+  function softwareFeedback(message,kind=''){
+    const node=app.querySelector('#software-feedback');if(!node)return;
+    node.textContent=message;node.className='notice'+(kind?' '+kind:'');
+  }
+  function softwareControlsBusy(busy){
+    softwareBusy=busy;
+    app.querySelectorAll('#software-check,#software-apply,#software-offline-submit,#offline-update-form input,#offline-update-form select').forEach(control=>control.disabled=busy||softwareUpdating);
+  }
+  async function loadSoftware(){
+    if(current!=='software')return;
+    try{
+      const status=await softwareRequest('status');
+      app.querySelector('#software-version').textContent=status.version||'尚未记录';
+      app.querySelector('#software-channel').textContent=status.channel==='stable'?'稳定版':status.channel==='pilot'?'测试版':'尚未记录';
+      softwareUpdating=!!status.updating;softwareControlsBusy(softwareBusy);
+      if(status.updating)softwareFeedback('正在安装已签名的软件更新。期间可能短暂断开本地页面，请稍后刷新。','warn');
+      else if(status.job?.result==='failed'){softwareFeedback('最近一次更新未完成；设备未确认新版本，必要时已自动回退。请先查看本机状态再重试。','warn');const p=app.querySelector('#offline-upload-progress');if(p&&!p.classList.contains('hidden')){p.className='notice warn';p.textContent='离线包未能完成安装；请查看上方更新状态。设备不会把未通过签名校验的软件当作成功版本。'}}
+      else if(status.job?.mode==='offline'&&status.job?.result==='success'){softwareFeedback('签名离线包安装完成，当前版本 '+(status.version||'已更新')+'。','good');const p=app.querySelector('#offline-upload-progress');if(p&&!p.classList.contains('hidden')){p.className='notice good';p.textContent='离线包已安装完成，设备服务健康检查通过。'}}
+      else if(!softwareBusy)softwareFeedback('可在线安装稳定版，也可在无外网时上传签名离线包。设备身份、订阅绑定和本地设置不会作为软件包替换。');
+    }catch(error){softwareFeedback(error.message,'warn')}
+    clearTimeout(softwarePoll);
+    softwarePoll=setTimeout(loadSoftware,8000);
+  }
+  function installSoftwareCard(){
+    const grid=app.querySelector('.grid');if(!grid||app.querySelector('#software-panel'))return;
+    const card=document.createElement('section');card.id='software-panel';card.className='card software-panel hidden';card.dataset.localSection='software';
+    card.innerHTML='<h2>软件更新</h2><p class="muted">在线检查稳定版，或在无外网时通过本地网络上传签名离线包。更新前会保留软件回退快照。</p><div class="software-details"><div class="software-detail"><span>当前版本</span><strong id="software-version">读取中…</strong></div><div class="software-detail"><span>更新通道</span><strong id="software-channel">读取中…</strong></div></div><div class="actions"><button type="button" id="software-check" class="btn secondary">检查在线更新</button><button type="button" id="software-apply" class="btn">安装稳定版</button></div><div id="software-feedback" class="notice" role="status" aria-live="polite">正在读取软件状态…</div><p class="help">更新期间请保持设备供电；签名校验失败或服务健康检查未通过时，设备会拒绝安装或回退软件。</p><section class="offline-update"><h3>离线升级</h3><p class="muted">电脑与 OEC 在同一局域网即可上传，不需要 OEC 连接互联网。需要同时提供 TY Gateway 的签名清单和对应安装包。</p><form id="offline-update-form"><div class="offline-update-grid"><label class="field"><span>签名清单中的版本通道</span><select name="channel"><option value="stable">稳定版</option><option value="pilot">测试版（Pilot）</option></select></label><label class="field"><span>签名清单（release.json）</span><input name="bundle" type="file" accept=".json,application/json" required></label><label class="field"><span>软件包（.tar.gz）</span><input name="artifact" type="file" accept=".tar.gz,application/gzip" required></label></div><div class="actions"><button type="submit" id="software-offline-submit" class="btn secondary">校验并安装离线包</button></div><div id="offline-upload-progress" class="notice hidden" role="status" aria-live="polite"></div></form><p class="help">设备会用内置公钥验证签名、版本通道、文件大小与 SHA-256；不会接受任意网址或未签名程序。单包上限 512 MB，清单上限 32 KB。仅允许升级，不提供此入口降级。</p></section>';
+    grid.append(card);
+    const configCard=document.createElement('section');configCard.id='config-panel';configCard.className='card software-panel hidden';configCard.dataset.localSection='software';
+    configCard.innerHTML='<h2>配置备份与恢复</h2><p class="muted">备份本设备的用户自定义规则、节点偏好及已保存的网络预设，不包含订阅地址、FRP 凭据或本地密码。</p><div class="actions"><button type="button" id="config-export" class="btn secondary">下载本机配置</button></div><div class="offline-update"><h3>导入配置</h3><p class="muted">仅接受这台设备导出的 JSON。先检查文件并预览；导入需要云端可用，但不会自动更改当前 IP、DHCP、DNS 或开启代理。</p><label class="field"><span>选择配置文件</span><input id="config-file" type="file" accept=".json,application/json"></label><div class="actions"><button type="button" id="config-preview" class="btn secondary">检查并预览</button><button type="button" id="config-import" class="btn" disabled>确认导入</button></div><div id="config-preview-result" class="notice" role="status" aria-live="polite">尚未选择配置文件。</div></div><div class="offline-update"><h3>恢复出厂（用户设置）</h3><p class="muted">关闭代理，清除用户自定义规则、节点偏好和临时模式。保留设备注册、FRP、管理员规则、本地密码和当前网络入口；此操作需要云端可用。</p><div class="actions"><button type="button" id="config-reset" class="btn secondary">重置用户设置</button></div></div>';
+    grid.append(configCard);
+    const configFile=configCard.querySelector('#config-file'),previewButton=configCard.querySelector('#config-preview'),importButton=configCard.querySelector('#config-import'),resetButton=configCard.querySelector('#config-reset'),result=configCard.querySelector('#config-preview-result');
+    let selectedConfig=null,configBusy=false;
+    function configFeedback(message,kind=''){result.textContent=message;result.className='notice'+(kind?' '+kind:'')}
+    function configControls(busy){configBusy=busy;configFile.disabled=busy;previewButton.disabled=busy;importButton.disabled=busy||!selectedConfig;resetButton.disabled=busy;configCard.querySelector('#config-export').disabled=busy}
+    async function configRequest(path,method='GET',body){const response=await fetch('/api/config/'+path,{method,credentials:'same-origin',cache:'no-store',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(response.status===401?'登录已过期，请重新登录后重试。':data.error||'配置操作未完成。');return data}
+    configFile.addEventListener('change',()=>{selectedConfig=null;importButton.disabled=true;configFeedback('请选择“检查并预览”，确认文件和设备匹配。')});
+    configCard.querySelector('#config-export').addEventListener('click',async()=>{if(configBusy)return;configControls(true);configFeedback('正在读取本机配置…');try{const backup=await configRequest('export');const file=new Blob([JSON.stringify(backup,null,2)+'\n'],{type:'application/json'});const url=URL.createObjectURL(file),link=document.createElement('a');link.href=url;link.download='ty-gateway-'+backup.device_code+'-config.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);configFeedback('配置已下载。请妥善保存，文件只适用于这台设备。','good')}catch(error){configFeedback(error.message,'warn')}finally{configControls(false)}});
+    previewButton.addEventListener('click',async()=>{if(configBusy)return;selectedConfig=null;const file=configFile.files[0];if(!file){configFeedback('请先选择配置文件。','warn');return}if(file.size>256*1024){configFeedback('配置文件不能超过 256 KB。','warn');return}configControls(true);configFeedback('正在校验设备码、规则和当前可用节点…');try{const value=JSON.parse(await file.text());const preview=await configRequest('preview','POST',value);selectedConfig=value;configFeedback('设备 '+preview.device_code+'；用户规则 '+preview.rules+' 条；节点偏好 '+preview.preferences+' 项；网络预设：'+preview.network_draft+'。'+preview.notice,'good')}catch(error){selectedConfig=null;configFeedback(error.message,'warn')}finally{configControls(false)}});
+    importButton.addEventListener('click',async()=>{if(configBusy||!selectedConfig||!confirm('确认恢复此设备的用户规则与节点偏好，并保存网络预设？当前网络服务和代理开关不会自动切换。'))return;configControls(true);configFeedback('正在恢复用户设置并等待设备确认…','warn');try{const response=await configRequest('import','POST',selectedConfig);selectedConfig=null;configFeedback(response.message||'配置已恢复。','good');setTimeout(()=>location.reload(),1800)}catch(error){configFeedback(error.message+' 如果提示云端已保存，请先刷新核对，不要反复导入。','warn')}finally{configControls(false)}});
+    resetButton.addEventListener('click',async()=>{if(configBusy||prompt('此操作会清除用户分流设置并关闭代理。请输入“重置”确认：')!=='重置')return;configControls(true);configFeedback('正在关闭代理并清除用户设置…','warn');try{const response=await configRequest('reset','POST',{confirm:'RESET_CUSTOMER_SETTINGS'});selectedConfig=null;configFeedback(response.message||'用户设置已重置。','good');setTimeout(()=>location.reload(),1800)}catch(error){configFeedback(error.message+' 请核对设备代理状态后再操作。','warn')}finally{configControls(false)}});
+    const check=card.querySelector('#software-check'),apply=card.querySelector('#software-apply');
+    check.addEventListener('click',async()=>{if(softwareBusy)return;softwareControlsBusy(true);softwareFeedback('正在检查稳定版…');try{const result=await softwareRequest('check','POST');softwareFeedback(result.update_available?'发现稳定版 '+result.version+'，可选择安装。':'已经是当前稳定版。',result.update_available?'good':'')}catch(error){softwareFeedback(error.message,'warn')}finally{softwareControlsBusy(false)}});
+    apply.addEventListener('click',async()=>{if(softwareBusy||!confirm('安装稳定版可能暂时中断本地管理页面。更新前请保持设备供电稳定，继续吗？'))return;softwareControlsBusy(true);softwareFeedback('正在请求设备安装稳定版…','warn');try{const result=await softwareRequest('apply','POST');softwareFeedback(result.started?'已开始安装 '+result.version+'。设备将自动检查服务状态，失败时回退软件。':result.message||'没有可安装的稳定版。',result.started?'warn':'good')}catch(error){softwareFeedback(error.message,'warn')}finally{softwareControlsBusy(false);loadSoftware()}});
+    const offlineForm=card.querySelector('#offline-update-form'),progress=card.querySelector('#offline-upload-progress');
+    offlineForm.addEventListener('submit',event=>{
+      event.preventDefault();if(softwareBusy||softwareUpdating)return;
+      const bundle=offlineForm.elements.bundle.files[0],artifact=offlineForm.elements.artifact.files[0],channel=offlineForm.elements.channel.value;
+      if(!bundle||!artifact){softwareFeedback('请同时选择签名清单和安装包。','warn');return}
+      const channelName=channel==='pilot'?'测试版（Pilot）':'稳定版';
+      if(!confirm('即将上传并安装'+channelName+'离线包。设备会验证签名后创建回滚快照；期间请勿断电。继续吗？'))return;
+      const formData=new FormData(offlineForm);
+      softwareControlsBusy(true);progress.classList.remove('hidden');progress.className='notice warn';progress.textContent='正在准备离线升级包…';
+      const request=new XMLHttpRequest();request.open('POST','/api/software/offline');request.responseType='json';request.timeout=30*60*1000;
+      request.upload.addEventListener('progress',event=>{if(event.lengthComputable){const percent=Math.floor(event.loaded*100/event.total);progress.textContent='正在上传离线包：'+percent+'%（'+Math.ceil(event.loaded/1048576)+' / '+Math.ceil(event.total/1048576)+' MB）'}});
+      request.addEventListener('load',()=>{
+        const data=request.response||(()=>{try{return JSON.parse(request.responseText)}catch{return {}}})();
+        if(request.status===202){progress.className='notice good';progress.textContent='离线包已接收，设备正在校验签名并安装。请保持供电；页面或网络短暂中断时稍后重新打开查看状态。';offlineForm.reset();loadSoftware()}
+        else{progress.className='notice warn';progress.textContent=request.status===401?'登录已过期，请重新登录后重试。':data.error||'离线包未能提交；未确认前请不要重复安装。'}
+        softwareControlsBusy(false);
+      });
+      request.addEventListener('error',()=>{progress.className='notice warn';progress.textContent='上传连接中断。请先重新读取更新状态，确认设备没有正在升级后再重试。';softwareControlsBusy(false)});
+      request.addEventListener('timeout',()=>{progress.className='notice warn';progress.textContent='上传等待超时。请重新读取更新状态，确认没有升级任务运行后再重试。';softwareControlsBusy(false)});
+      request.send(formData);
+    });
+  }
+  function classify(){
+    const grid=app.querySelector('.grid');
+    if(!grid)return;
+    for(const card of grid.querySelectorAll(':scope > .card')){
+      if(card.classList.contains('device')||card.id==='proxyCard')card.dataset.localSection=card.id==='proxyCard'?'proxy':'network';
+      else if(!card.dataset.localSection){
+        const heading=card.querySelector('h2')?.textContent?.trim()||'';
+        card.dataset.localSection=heading==='科学上网'?'proxy':(heading==='本地密码'||heading==='离线密码恢复')?'password':'network';
+      }
+      card.classList.toggle('hidden',card.dataset.localSection!==current);
+    }
+  }
+  function select(tab){
+    current=tab;
+    app.querySelectorAll('[data-local-tab]').forEach(button=>{
+      const active=button.dataset.localTab===tab;
+      button.classList.toggle('active',active);
+      button.setAttribute('aria-selected',String(active));
+    });
+    const title=app.querySelector('.title'),sub=app.querySelector('.sub');
+    if(title)title.textContent=tab==='password'?'密码管理':tab==='software'?'更新与备份':tab==='proxy'?'代理与规则':'设备与局域网';
+    if(sub)sub.textContent=tab==='password'?'管理本地登录密码和离线恢复入口。':tab==='software'?'安装签名更新包，或备份、导入并重置这台设备的用户设置。':tab==='proxy'?'开启代理后，仅有将 OEC 设为网关的局域网设备会按已下发规则分流；订阅地址和节点凭据不会在本地显示。':'本地管理在无外网时仍可使用；此页面不会显示订阅地址或节点凭据。';
+    classify();
+    if(tab==='software')loadSoftware();else clearTimeout(softwarePoll);
+  }
+  function install(){
+    if(!app.querySelector('.local-nav')){
+      const sub=app.querySelector('.sub');
+      if(!sub)return;
+      const nav=document.createElement('nav');
+      nav.className='local-nav';nav.setAttribute('aria-label','本地管理菜单');
+      nav.innerHTML='<button type="button" class="local-tab active" data-local-tab="network" aria-selected="true">设备与网络</button><button type="button" class="local-tab" data-local-tab="proxy" aria-selected="false">代理与规则</button><button type="button" class="local-tab" data-local-tab="software" aria-selected="false">更新与备份</button><button type="button" class="local-tab" data-local-tab="password" aria-selected="false">密码管理</button>';
+      sub.after(nav);
+      nav.addEventListener('click',event=>{const button=event.target.closest('[data-local-tab]');if(button)select(button.dataset.localTab)});
+    }
+    installSoftwareCard();
+    classify();
+  }
+  const observer=new MutationObserver(install);
+  observer.observe(app,{childList:true,subtree:true});
+  install();
+})();
+</script>
+<script>
+(()=>{
+  const app=document.getElementById('appView');
+  if(!app)return;
+  const normalizeMac=value=>String(value||'').replace(/[.:-]/g,'').toLowerCase();
+  async function addNeighborPanel(){
+    const form=document.getElementById('planAddress')?.closest('form');
+    if(!form||form.querySelector('.neighbor-panel'))return;
+    form.closest('.card')?.classList.add('wide-card');
+    const panel=document.createElement('section');panel.className='neighbor-panel';
+    const head=document.createElement('div');head.className='neighbor-head';
+    const title=document.createElement('h3');title.textContent='当前局域网设备';
+    const refresh=document.createElement('button');refresh.type='button';refresh.className='btn secondary compact';refresh.textContent='刷新设备列表';head.append(title,refresh);
+    const hint=document.createElement('p');hint.className='help';hint.textContent='显示 OEC 当前能观察到的 IPv4 设备。点击“加入绑定”只加入待保存列表，最后仍需点击下方保存并应用配置；随机 MAC 会按当前观测值显示。';
+    const list=document.createElement('div');list.className='neighbor-list';panel.append(head,hint,list);
+    const anchor=[...form.querySelectorAll('h3')].find(node=>node.textContent.trim()==='固定设备 IP / MAC');
+    if(anchor)form.insertBefore(panel,anchor);else form.append(panel);
+    let snapshot=[];
+    const get=async()=>{const response=await fetch('/api/network/neighbors',{credentials:'same-origin',cache:'no-store'});const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||'暂时无法读取局域网设备');return data.neighbors||[]};
+    const render=()=>{
+      list.replaceChildren();
+      const reservations=window.tyReservations||[];
+      if(!snapshot.length){const empty=document.createElement('div');empty.className='neighbor-empty';empty.textContent='暂未观察到其他局域网设备；请让设备产生一次网络流量后刷新。';list.append(empty);return}
+      for(const item of snapshot){
+        const row=document.createElement('div');row.className='neighbor-row';
+        const main=document.createElement('div');main.className='neighbor-main';
+        const ip=document.createElement('div');ip.className='neighbor-ip';ip.textContent=item.ip;
+        const mac=document.createElement('div');mac.className='neighbor-mac';mac.textContent=item.mac+' · '+item.state;
+        main.append(ip,mac);
+        const button=document.createElement('button');button.type='button';button.className='btn secondary compact';
+        const reserved=!!item.already_reserved||reservations.some(value=>normalizeMac(value.mac)===normalizeMac(item.mac)&&value.ip===item.ip);
+        button.disabled=reserved;button.textContent=reserved?'已加入绑定':'加入绑定';
+        button.addEventListener('click',()=>{const current=window.tyReservations||[];if(current.some(value=>normalizeMac(value.mac)===normalizeMac(item.mac)))return;current.push({name:'',mac:item.mac,ip:item.ip});window.tyRenderReservations?.();render();});
+        row.append(main,button);list.append(row);
+      }
+    };
+    const load=async()=>{refresh.disabled=true;refresh.textContent='读取中…';try{snapshot=await get();render()}catch(error){list.replaceChildren();const empty=document.createElement('div');empty.className='neighbor-empty';empty.textContent=error.message;list.append(empty)}finally{refresh.disabled=false;refresh.textContent='刷新设备列表'}};
+    refresh.addEventListener('click',load);window.tyLoadNeighbors=load;await load();
+  }
+  const observer=new MutationObserver(()=>{addNeighborPanel()});
+  observer.observe(app,{childList:true,subtree:true});
+  addNeighborPanel();
+})();
+</script>
+</body>
+</html>

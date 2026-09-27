@@ -1,0 +1,23 @@
+# Optional SSH-only rescue template. This file is intentionally incomplete.
+# The address, CA and token must be provisioned after pairing. The rescue
+# service also requires both files to exist, and remains disabled by default.
+serverAddr = "<cloud-provided-shanghai-host>"
+serverPort = 7001
+
+auth.method = "token"
+auth.additionalScopes = ["HeartBeats", "NewWorkConns"]
+auth.tokenSource.type = "file"
+auth.tokenSource.file.path = "/etc/ty-gateway/frps.token"
+
+transport.tls.enable = true
+transport.tls.serverName = "<cloud-provided-shanghai-host>"
+transport.tls.trustedCaFile = "/etc/ty-gateway/shanghai-ca.crt"
+
+loginFailExit = true
+
+[[proxies]]
+name = "ssh-rescue"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 22
+remotePort = 22000

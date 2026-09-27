@@ -1,0 +1,36 @@
+[Unit]
+Description=TY Gateway OEC agent
+Requires=ty-gateway-firstboot.service
+After=ty-gateway-firstboot.service ty-gateway-dae-helper.service dae.service network-online.target
+Wants=network-online.target ty-gateway-dae-helper.service
+
+[Service]
+Type=simple
+User=tygateway
+Group=typroxy
+SupplementaryGroups=tygateway
+EnvironmentFile=-/etc/ty-gateway/agent.env
+ExecStart=/usr/local/bin/ty-gateway-agent --allow-dae-proxy=true
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/var/lib/ty-gateway
+ReadWritePaths=/run/ty-gateway-agent
+RuntimeDirectory=ty-gateway-agent
+RuntimeDirectoryMode=0750
+UMask=0077
+LimitNOFILE=1024
+
+[Install]
+WantedBy=multi-user.target

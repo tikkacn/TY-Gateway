@@ -1,0 +1,18 @@
+[Unit]
+Description=TY Gateway local signed software update service
+After=local-fs.target network.target
+Before=ty-gateway-local.service
+
+[Service]
+Type=simple
+User=root
+Group=tylocal
+RuntimeDirectory=ty-gateway-update
+RuntimeDirectoryMode=0711
+ExecStart=/usr/bin/python3 /usr/local/libexec/ty-gateway-update-service
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
