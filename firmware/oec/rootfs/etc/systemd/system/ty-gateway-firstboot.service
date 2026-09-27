@@ -9,7 +9,8 @@ Type=oneshot
 ExecStart=/usr/local/libexec/ty-gateway-firstboot
 RemainAfterExit=yes
 NoNewPrivileges=false
-ProtectSystem=full
+# This one-shot creates system users and writes /etc/ty-gateway.
+# Do not make /etc read-only for this service.
 ProtectHome=true
 
 [Install]

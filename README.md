@@ -4,12 +4,12 @@ TY Gateway 是面向 ARM64 单网口旁路由设备的管理与分流软件。�
 
 ## 当前状态
 
-`v0.8.0` 是给第二台全新 Armbian 设备测试的一键安装 Pilot，不是 stable，也不应自动部署到已有设备。测试通过前请勿用于其他设备或生产环境。
+`v0.8.1` 是给第二台全新 Armbian 设备重试的一键安装 Pilot，修复首启服务无法写入 `/etc/ty-gateway` 的问题。它尚未完成真机验收，不应自动部署到已有设备或用于生产环境。
 
 测试设备联网并能访问 GitHub 时，可用以下命令启动安装：
 
 ```bash
-curl -fsSL https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.0/bootstrap-oec.sh | sudo bash
+curl -fsSL https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.1/bootstrap-oec.sh | sudo bash
 ```
 
 安装器会校验签名软件包；安装前不会启用 DHCP、局域网 DNS 或 DAE 代理。Armbian 的 apt 源仍需可访问。
@@ -25,7 +25,7 @@ GitHub 和 R2 只负责分发。设备身份、订阅、FRP 凭据、密码与�
 
 ## 安全边界
 
-`release-public.pem` 是**公开验签公钥**，不是登录密码。正式安装必须同时通过签名、版本/平台、文件大小、SHA-256 和安装包内容检查。只发布通过全新设备安装、离线升级、回退及重启恢复验证的版本。不要从 issue、评论或非本仓库链接运行安装脚本，也不要在仓库中提交设备凭据或订阅内容。
+`release-public.pem` 是**公开验签公钥**，不是登录密码。正式安装必须同时通过签名、版本/平台、文件大小、SHA-256 和安装包内容检查。Pilot 供指定测试设备验收；stable 必须通过全新设备安装、离线升级、回退及重启恢复验证。不要从 issue、评论或非本仓库链接运行安装脚本，也不要在仓库中提交设备凭据或订阅内容。
 
 公开分发域名拟使用 `https://oec.uutec.net`，仅属于 TY Gateway 独立 R2 桶；Guide 项目的 `soft.uutec.net` 和桶不在本项目范围内。
 
@@ -35,7 +35,7 @@ GitHub Release 的 `v<版本>` 标签保存不可变签名软件包、引导验�
 
 Pilot 命令只用于这次第二台设备验收；根据实测结果修正后再决定是否发布 stable。
 
-`scripts/bootstrap-oec.template.sh` 与 `scripts/prepare-oec-bootstrap.py` 是构建阶段源码，不是可直接运行的安装入口。模板中的版本、验签器哈希和公钥必须由已签名的软件包生成，并经新设备验收，才会发布为实际安装脚本。
+`scripts/bootstrap-oec.template.sh` 与 `scripts/prepare-oec-bootstrap.py` 是构建阶段源码，不是可直接运行的安装入口。实际安装脚本必须由已签名的软件包生成，并固定版本、验签器哈希和公钥；Pilot 供新设备验收。
 
 当前模板已包含完整的 Armbian 首装流程：安装 `dnsmasq-base`、`python3-dbus` 等运行依赖；从 DAE 官方 GitHub 下载 ARM64 `dae` 2.1.1 并校验固定 SHA-256；安全解出程序、systemd 单元和规则数据，再安装经 TY Gateway 固定公钥验证的设备程序包。它只支持带 systemd、NetworkManager、apt 的 Debian/Ubuntu ARM64 Armbian。安装器不升级系统、不替换内核、不配置网卡地址，并让 DHCP、局域网 DNS 和代理开关保持关闭。DAE 的 eBPF 内核配置检查会引用官方要求；检查未通过时软件可安装，但代理必须保持关闭。测试包还提供 `--package-dir` 本地资产模式，但 apt 系统依赖仍需联网安装。
 
