@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Prepare a pinned online first-install kit from a signed release.
+"""Prepare a pinned first-install kit from a signed release.
 
-The installer downloads signed TY Gateway artifacts from GitHub/R2 and obtains
-OS runtime dependencies from configured Debian/Ubuntu package sources. This is
-not an offline first-install kit or a publisher.
+The installer can consume the included signed TY Gateway artifacts and pinned
+official DAE package locally, or download them from their configured sources.
+OS dependencies still come from network sources. This is not a publisher or a
+fully offline installer.
 """
 
 import argparse
@@ -24,6 +25,8 @@ TEMPLATE = ROOT / "scripts" / "bootstrap-oec.template.sh"
 VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 ARTIFACT_NAME = "ty-gateway-oec-overlay.tar.gz"
 FETCH_NAME = "ty-release-fetch-linux-arm64"
+DAE_NAME = "dae-linux-arm64-v2.1.1.deb"
+DAE_SHA256 = "e7ecc9600df20163e90b9cab018f522e090996993c971ad0c271fb5b33c3a387"
 PINNED_KEY_SHA256 = "78756e159ec392b52b146b049db79b0d94848ee10359841f58877aad192f1a3f"
 
 
@@ -75,13 +78,15 @@ def check_fetch_matches_signed_archive(fetch, archive):
 
 
 def prepare(args):
-    for source in (args.bundle, args.artifact, args.public_key, args.fetch, args.verifier):
+    for source in (args.bundle, args.artifact, args.public_key, args.fetch, args.verifier, args.dae_package):
         if not source.is_file() or source.is_symlink():
             raise ValueError(f"missing or unsafe input file: {source}")
     if args.artifact.name != ARTIFACT_NAME:
         raise ValueError("artifact filename is not the fixed release filename")
     if sha256_file(args.public_key) != PINNED_KEY_SHA256:
         raise ValueError("release public key does not match the pinned TY Gateway key")
+    if args.dae_package.name != DAE_NAME or sha256_file(args.dae_package) != DAE_SHA256:
+        raise ValueError("DAE package filename or SHA-256 does not match the pinned official ARM64 package")
     subprocess.run([str(args.verifier), "verify", "-bundle", str(args.bundle),
                     "-public-key", str(args.public_key), "-artifact", str(args.artifact)],
                    check=True, stdout=subprocess.DEVNULL)
@@ -103,20 +108,24 @@ def prepare(args):
         (stage / "bootstrap-oec.sh").write_text(script, encoding="utf-8", newline="\n")
         shutil.copyfile(args.fetch, stage / FETCH_NAME)
         shutil.copyfile(args.public_key, stage / "release-public.pem")
+        shutil.copyfile(args.bundle, stage / "release.json")
+        shutil.copyfile(args.artifact, stage / ARTIFACT_NAME)
+        shutil.copyfile(args.dae_package, stage / DAE_NAME)
         sums = []
-        for name in ("bootstrap-oec.sh", FETCH_NAME, "release-public.pem"):
+        for name in ("bootstrap-oec.sh", FETCH_NAME, "release-public.pem", "release.json", ARTIFACT_NAME, DAE_NAME):
             sums.append(f"{sha256_file(stage / name)}  {name}")
         (stage / "SHA256SUMS").write_text("\n".join(sums) + "\n", encoding="ascii")
         os.chmod(stage / "bootstrap-oec.sh", 0o755)
         os.replace(stage, output)
-    print(f"prepared pinned online bootstrap for {manifest['channel']} {manifest['version']}: {output}")
-    print("The installer still needs network access for apt dependencies and the official DAE package.")
+    print(f"prepared pinned TY Gateway bootstrap kit for {manifest['channel']} {manifest['version']}: {output}")
+    print("For local package use: bootstrap-oec.sh --package-dir <this directory>.")
+    print("The installer still needs network access for apt dependencies. The TY Gateway and DAE payloads are bundled locally.")
     print("NOT PUBLISHED. Fresh-device testing and source/package review are still required.")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("bundle", "artifact", "public-key", "fetch", "verifier", "output"):
+    for name in ("bundle", "artifact", "public-key", "fetch", "verifier", "dae-package", "output"):
         parser.add_argument("--" + name, required=True, type=pathlib.Path)
     prepare(parser.parse_args())
 

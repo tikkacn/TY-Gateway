@@ -14,6 +14,18 @@ r2_fetch_url="https://oec.uutec.net/bootstrap/${release_version}/ty-release-fetc
 dae_version='2.1.1'
 dae_sha256='e7ecc9600df20163e90b9cab018f522e090996993c971ad0c271fb5b33c3a387'
 dae_url="https://github.com/daeuniverse/dae/releases/download/v${dae_version}/dae-linux-arm64.deb"
+package_dir=''
+
+usage() {
+  echo 'usage: bootstrap-oec.sh [--package-dir DIRECTORY]' >&2
+  exit 2
+}
+while (($#)); do
+  case "$1" in
+    --package-dir) (($# >= 2)) || usage; package_dir="$2"; shift 2 ;;
+    *) usage ;;
+  esac
+done
 
 [[ "$channel" == stable || "$channel" == pilot ]] || { echo 'Invalid embedded release channel.' >&2; exit 2; }
 [[ "$(id -u)" == 0 ]] || { echo 'Run as root.' >&2; exit 2; }
@@ -108,16 +120,30 @@ download_exact() {
     --connect-timeout 10 --max-time 240 "$backup" -o "$target"
 }
 
-download_exact "$github_release_url/ty-release-fetch-linux-arm64" "$r2_fetch_url" "$fetch"
+bundle="$work_dir/release.json"
+artifact="$work_dir/ty-gateway-oec-overlay.tar.gz"
+if [[ -n "$package_dir" ]]; then
+  [[ -d "$package_dir" && ! -L "$package_dir" ]] || { echo 'Invalid local package directory.' >&2; exit 2; }
+  package_dir="$(realpath -- "$package_dir")"
+  for name in ty-release-fetch-linux-arm64 release.json ty-gateway-oec-overlay.tar.gz dae-linux-arm64-v2.1.1.deb; do
+    [[ -f "$package_dir/$name" && ! -L "$package_dir/$name" ]] || {
+      echo "Local package directory is missing a regular $name file." >&2; exit 2;
+    }
+  done
+  cp -- "$package_dir/ty-release-fetch-linux-arm64" "$fetch"
+  cp -- "$package_dir/release.json" "$bundle"
+  cp -- "$package_dir/ty-gateway-oec-overlay.tar.gz" "$artifact"
+  cp -- "$package_dir/dae-linux-arm64-v2.1.1.deb" "$dae_deb"
+else
+  download_exact "$github_release_url/ty-release-fetch-linux-arm64" "$r2_fetch_url" "$fetch"
+  download_exact "$github_release_url/release.json" "$r2_release_url/$channel/release.json" "$bundle"
+  download_exact "$github_release_url/ty-gateway-oec-overlay.tar.gz" "$r2_release_url/ty-gateway-oec-overlay.tar.gz" "$artifact"
+fi
 printf '%s  %s\n' "$fetch_sha256" "$fetch" | sha256sum --check --status || {
   echo 'TY Gateway verifier hash mismatch; no downloaded code was executed.' >&2; exit 2;
 }
 chmod 0700 "$fetch"
 
-bundle="$work_dir/release.json"
-artifact="$work_dir/ty-gateway-oec-overlay.tar.gz"
-download_exact "$github_release_url/release.json" "$r2_release_url/$channel/release.json" "$bundle"
-download_exact "$github_release_url/ty-gateway-oec-overlay.tar.gz" "$r2_release_url/ty-gateway-oec-overlay.tar.gz" "$artifact"
 mkdir -m 0700 "$work_dir/cache"
 "$fetch" stage-local -json -channel "$channel" -public-key "$work_dir/release-public.pem" \
   -output-dir "$work_dir/cache" -bundle "$bundle" -artifact "$artifact" > "$work_dir/result.json"
@@ -139,11 +165,13 @@ PY
   echo 'Verified overlay is missing its installer.' >&2; exit 2;
 }
 
-# DAE is fetched directly from its official release and pinned by SHA-256.
+# DAE is bundled from its official release or fetched directly, then pinned by SHA-256.
 # Extract its files without running the upstream post-install script, which may
 # restart a service. The TY Gateway proxy switch remains off after a fresh install.
-curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
-  --connect-timeout 10 --max-time 240 "$dae_url" -o "$dae_deb"
+if [[ -z "$package_dir" ]]; then
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+    --connect-timeout 10 --max-time 240 "$dae_url" -o "$dae_deb"
+fi
 printf '%s  %s\n' "$dae_sha256" "$dae_deb" | sha256sum --check --status || {
   echo 'Official DAE package hash mismatch; refusing installation.' >&2; exit 2;
 }
