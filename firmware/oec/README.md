@@ -38,7 +38,9 @@ OEC 专用底包（原样刷入） → 实机验收启动、DHCP、SSH、重启 
 
 安装器会先验证包内 `SHA256SUMS`，再用新 FRPC 检查现有 `/etc/ty-gateway/frpc.toml`（若存在）；校验失败时不会覆盖设备文件。CRLF 格式的校验清单也会逐项校验，不会跳过校验。安装过程中会对将要改写的文件做权限受限的临时备份，若写入或服务更新失败会尝试恢复文件及已触碰服务的原运行状态，并报告回退是否完整。
 
-首次安装时按默认策略启用本地管理、dae 辅助器、firstboot 和 Agent。Agent 会在首次联网时尝试以设备有线 MAC 认领后台预登记的 MAC；后台未登记或网络不可用时会重试，但不会因此启用 DHCP、DNS 或 dae 代理。该 MAC 首次认领存在可被仿冒/抢先认领的风险，因此仅适合受控小范围试点，详见 `docs/DEVICE-ACTIVATION.md`。新流程需要 Cloud 端应用迁移 `006`、`007` 并部署匹配版本；目前源码/测试已准备，但不能据此推断生产 Cloud 或设备已升级。升级时保留现有服务的启用、停止和屏蔽状态；可用 `TY_OVERLAY_PRESERVE_AGENT_PROCESS=1` 安装新文件而不重启正在运行的 Agent，之后经运维人员确认再手动重启。旧 FRPC 服务不会被安装器启用、禁用、启动、停止或重启；现有隧道会继续运行，旧配置保持原样。每设备自动 FRP 由 Agent 按 Cloud 认证配置管理为独立子进程，只有单独 FRPS listener/插件与 Cloud 配置齐备并启用后才会启动，不使用或覆盖旧 `22000` 救援隧道。若旧 FRPC 服务已被屏蔽，安装器保留屏蔽状态和单元文件。现有 `agent.env`、本地管理 `local.env`、设备凭据和真实 FRPC 配置会保留，已有文件权限不会被安装器改写；新建的 `local.env` 限定为 root 与 `tylocal` 组可读。
+首次安装时按默认策略启用本地管理、dae 辅助器、firstboot 和 Agent。Agent 会在首次联网时尝试以设备有线 MAC 认领后台预登记的 MAC；后台未登记或网络不可用时会重试，但不会因此启用 DHCP、DNS 或 dae 代理。该 MAC 首次认领存在可被仿冒/抢先认领的风险，因此仅适合受控小范围试点。新流程需要 Cloud 端应用匹配的数据库迁移和程序版本；本地测试通过不代表生产 Cloud 或设备已升级。
+
+每设备自动 FRP 由 Agent 根据 Cloud 认证配置管理为独立子进程，SSH 映射端口为 22000–22999。FRPC `serverPort` 与 FRPS `bindPort` 使用相同控制端口 7001；旧共享认证路径需由 per-device 授权插件替换，切换前确认没有仍依赖旧共享认证的设备，再在现有 7001 监听上部署插件/roster、TLS 与 Cloud 配置。FRPS 必须同时配置仅服务端持有的非空 Token；授权插件只在通过每设备 roster 校验后为 FRPS 改写登录签名，所以漏挂插件会被 FRPS 原生 Token 校验拒绝。安装器仍保留已有设备的旧 FRPC 配置与服务状态，不会擅自停止正在运行的远程救援链路；这不表示新安装需要旧共享凭据。升级时保留现有服务启停与屏蔽状态；现有 `agent.env`、`local.env` 和设备凭据均保留。新建的 `local.env` 仅 root 与 `tylocal` 组可读。服务端操作要求见 [FRP 授权部署说明](../../docs/FRP-AUTH-DEPLOYMENT.md)。
 
 一键安装使用 root 专有的 `/var/lib/ty-gateway-bootstrap/state` 区分“安装中”和“已完成”，并对并发运行加锁。中断后重跑同一受信脚本会再次校验签名与哈希，对固定路径的软件文件补齐或重新写入，保留设备凭据、用户设置和订阅状态；账户创建及服务启用是幂等操作。只有首次安装的续装模式会补启因断电而留下的已存在但未启动的核心服务；普通升级仍保留既有启停状态。已完成的首装重跑不会重复创建实例或重置配置。DAE、DHCP、局域网 DNS 依旧按用户开关控制，不因“管理服务开机自启”而自动开启。旧版中断但尚无 Agent 的设备，只在 DAE 二进制、单元、数据及默认关闭配置均与固定版本一致时允许续装。
 
@@ -50,13 +52,21 @@ OEC 专用底包（原样刷入） → 实机验收启动、DHCP、SSH、重启 
 
 Agent 通过单独的 `typroxy` 组 Unix socket 向本地管理程序提供窄接口，只接受状态查询及布尔开关，不暴露订阅 URL、节点凭据或任意 dae 配置。开关状态以 0600 文件保存在 Agent 私有目录；云端短时不可达时，可用本机最后一次同步的规则启用，连接恢复后 Agent 自动获取最新配置。
 
-安装器回归测试可在 Bash 环境执行：
+快速验证首装及安全重复安装可在 Bash 环境执行：
+
+    TY_OVERLAY_TEST_SCOPE=install-idempotency bash scripts/test-install-oec-overlay.sh
+
+模拟首装中断后补齐服务可单独验证：
+
+    TY_OVERLAY_TEST_SCOPE=interrupted-repair bash scripts/test-install-oec-overlay.sh
+
+完整安装器回归测试：
 
     bash scripts/test-install-oec-overlay.sh
 
 测试使用临时根目录和模拟的 systemd 命令，不会修改当前电脑的服务或网络；覆盖首装、重复安装、FRPC 启用/运行/停止/屏蔽状态、校验失败及安装回退。它不能替代在 OEC 上的升级与重启验收。
 
-dae 辅助器以 root 运行，但只接受受限 Unix socket 上的订阅配置请求，不执行任意 shell；它将订阅响应暂存为 `/etc/dae/ty-gateway/subscription.raw`（权限 0600），向 dae 添加单独的托管配置 include，先运行 `dae validate` 再 reload。失败时恢复 dae 配置和上一份订阅。URL 和响应正文不会写入 Agent 状态文件或日志。overlay 安装器不会改写 `/boot`、Loader、DTB 或现有网卡配置。手动安装 overlay 前需准备 `dnsmasq-base`、`python3-dbus`、NetworkManager 和官方 dae；新设备应使用生成的 `bootstrap-oec.sh`，它自动安装缺失的 apt 运行依赖、校验并安装固定版本的官方 DAE，再安装签名 overlay。它不会运行 DAE Debian 包的 post-install 脚本，也不会启用 DAE、DHCP 或局域网 DNS。首次安装的 Agent 会按 `TY_AGENT_AUTO_ENROLL` 自动尝试 MAC allowlist 认领；升级保留已有 credentials。通用包不携带上海 FRPS 全局 token、roster token、设备 secret 或激活文件。每设备 FRP 源码使用独立 control listener、端口池、TLS CA 和设备/端口派生凭据；Cloud 开关默认关闭，只有完成独立 FRPS/plugin 部署并配置 `TY_FRP_AUTO_ENABLED=1` 后才可能下发。当前版本尚未部署到 Cloud、FRPS 或 OEC。
+dae 辅助器以 root 运行，但只接受受限 Unix socket 上的订阅配置请求，不执行任意 shell；它将订阅响应暂存为 `/etc/dae/ty-gateway/subscription.raw`（权限 0600），向 dae 添加单独的托管配置 include，先运行 `dae validate` 再 reload。失败时恢复 dae 配置和上一份订阅。URL 和响应正文不会写入 Agent 状态文件或日志。overlay 安装器不会改写 `/boot`、Loader、DTB 或现有网卡配置。手动安装 overlay 前需准备 `dnsmasq-base`、`python3-dbus`、NetworkManager 和官方 dae；新设备应使用生成的 `bootstrap-oec.sh`，它自动安装缺失的 apt 运行依赖、校验并安装固定版本的官方 DAE，再安装签名 overlay。它不会运行 DAE Debian 包的 post-install 脚本，也不会启用 DAE、DHCP 或局域网 DNS。首次安装的 Agent 会按 `TY_AGENT_AUTO_ENROLL` 自动尝试 MAC allowlist 认领；升级保留已有 credentials。通用包不携带上海 FRPS 全局 token、roster token、设备 secret 或激活文件。每设备 FRP 源码使用独立 control listener、端口池、TLS CA 和设备/端口派生凭据；Cloud 开关默认关闭，只有完成独立 FRPS/plugin 部署并配置 `TY_FRP_AUTO_ENABLED=1` 后才可能下发。**本分支的新自动 FRP 部署链路尚未在 Cloud、FRPS 和 OEC2 完成集成验收**；OEC2 现有旧版本/局部服务状态不代表新链路已部署。
 
 绑定 LAN 的 dae 要求接口的 IPv6 forwarding 为 1；`0` 表示该接口未开启 IPv6 转发，不等同于“DAE 已关闭”的完整状态。旧版 NetworkManager 在重新接管网卡时可能将该接口参数重置为 0，即使 `/etc/sysctl.d` 已设置为 1。dae 启动前检查会在支持 `ipv6.forwarding` 的 NetworkManager 上，把**当前托管 LAN 连接的配置**持久设为 `yes`，不重新激活连接；旧版本或设置失败则依靠运行时写入。NetworkManager 网卡上线、重新应用和 DHCP 变化后也会触发检查。用户关闭代理时不会为了改写 sysctl 而启动 DAE；已经写入的连接属性不随代理开关复位。用户开启代理并保存后，Agent 会保存开关状态、启用 dae 开机服务，并在重启时恢复已验证的策略。只处理 dae 托管配置指定的接口，不会更改网卡地址或启动 DHCP/DNS；不要只依赖开机执行一次的 sysctl 设置。
 

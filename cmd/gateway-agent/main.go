@@ -114,6 +114,7 @@ type agent struct {
 	configMu                 sync.Mutex
 	daeApplier               daeApplier
 	autoFRP                  *autoFRPManager
+	autoFRPState             string
 	updateSocket             string
 	daeStatus                string
 	daeSubID                 string
@@ -275,6 +276,18 @@ func (a *agent) enroll(ctx context.Context) error {
 		return err
 	}
 	a.interfaceName = interfaceName
+	return a.enrollWithMAC(ctx, interfaceName, mac)
+}
+
+// enrollWithMAC contains the identity-bound enrollment flow after the active
+// interface has been discovered. Keeping discovery separate lets the complete
+// Cloud claim flow be integration-tested without depending on the test host's
+// network interfaces.
+func (a *agent) enrollWithMAC(ctx context.Context, interfaceName, mac string) error {
+	if strings.TrimSpace(interfaceName) == "" || strings.TrimSpace(mac) == "" {
+		return errors.New("device interface identity is unavailable")
+	}
+	a.interfaceName = interfaceName
 	activation, err := a.readActivation(mac)
 	if err != nil {
 		return err
@@ -318,6 +331,9 @@ func (a *agent) enroll(ctx context.Context) error {
 	}
 	if status == http.StatusConflict {
 		return errors.New("device is already registered; existing credentials are never returned by the cloud")
+	}
+	if status == http.StatusForbidden && activation.ActivationCode == "" {
+		return fmt.Errorf("cloud rejected active interface %s MAC %s; verify this exact MAC is pre-registered and not assigned to another device", interfaceName, mac)
 	}
 	if status != http.StatusCreated {
 		return fmt.Errorf("cloud returned HTTP %d", status)
@@ -512,9 +528,7 @@ func (a *agent) fetchConfigLocked(ctx context.Context, forceSubscription, rechec
 		return errors.New("cloud returned configuration for a different device")
 	}
 	if a.autoFRP != nil {
-		if err := a.autoFRP.Apply(ctx, a.stateValue(), config.AutoFRP); err != nil {
-			a.logger.Printf("automatic FRP reconciliation deferred: %v", err)
-		}
+		a.reconcileAutoFRP(ctx, config.AutoFRP)
 	}
 	if config.Rescue != nil {
 		if err := a.persistRescuePort(config.Rescue.RemotePort); err != nil {
@@ -722,11 +736,12 @@ func (a *agent) fetchConfigLocked(ctx context.Context, forceSubscription, rechec
 		cancelStatus()
 	}
 	if len(validatedNodes) > 0 && boundSubscriptionID != "" {
-		inventoryJSON, _ := json.Marshal(validatedNodes)
+		inventory := nodeIdentities(validatedNodes)
+		inventoryJSON, _ := json.Marshal(inventory)
 		inventoryHash := fmt.Sprintf("%x", sha256.Sum256(append([]byte(boundSubscriptionID), inventoryJSON...)))
 		if inventoryHash != a.lastReportedInventory {
 			reportCtx, cancelReport := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-			if err := a.reportValidatedNodes(reportCtx, boundSubscriptionID, validatedNodes); err != nil {
+			if err := a.reportValidatedNodes(reportCtx, boundSubscriptionID, inventory); err != nil {
 				a.logger.Printf("validated node inventory is local; cloud metadata sync will retry")
 			} else {
 				a.lastReportedInventory = inventoryHash
@@ -735,6 +750,34 @@ func (a *agent) fetchConfigLocked(ctx context.Context, forceSubscription, rechec
 		}
 	}
 	return nil
+}
+
+func (a *agent) reconcileAutoFRP(ctx context.Context, config *model.AutoFRPConfig) {
+	if a.autoFRP == nil {
+		return
+	}
+	if err := a.autoFRP.Apply(ctx, a.stateValue(), config); err != nil {
+		// FRPC verifier output may contain generated configuration fields. Never
+		// copy it into the journal, where device-derived credentials could leak.
+		a.autoFRPState = "apply-failed"
+		if a.logger != nil {
+			a.logger.Printf("automatic FRP reconciliation deferred")
+		}
+		return
+	}
+	if config == nil {
+		if a.autoFRPState != "cloud-config-absent" && a.logger != nil {
+			a.logger.Printf("automatic FRP config absent from Cloud; client stopped while waiting for per-device authorization")
+		}
+		a.autoFRPState = "cloud-config-absent"
+		return
+	}
+	encoded, _ := json.Marshal(config)
+	configKey := fmt.Sprintf("configured:%x", sha256.Sum256(encoded))
+	if a.autoFRPState != configKey && a.logger != nil {
+		a.logger.Printf("automatic FRP client process started; tunnel reachability remains unverified; control_port=%d remote_port=%d", config.ControlPort, config.RemotePort)
+	}
+	a.autoFRPState = configKey
 }
 
 func (a *agent) subscriptionRefreshDue() bool {
@@ -1225,6 +1268,9 @@ func makeDaePolicy(server, interfaceName string, config model.DeviceConfig, allo
 	}
 	if config.Rescue != nil && config.Rescue.Host != "" {
 		policy.DirectHosts = append(policy.DirectHosts, config.Rescue.Host)
+	}
+	if config.AutoFRP != nil && config.AutoFRP.Host != "" && (config.Rescue == nil || config.AutoFRP.Host != config.Rescue.Host) {
+		policy.DirectHosts = append(policy.DirectHosts, config.AutoFRP.Host)
 	}
 	return policy
 }

@@ -92,11 +92,16 @@ func stateWithValidatedNodes(customer []byte, nodes []model.CustomerNode) ([]byt
 			delete(prefs, category)
 		}
 	}
-	for i := range nodes {
-		nodes[i].Region = selection.RegionForName(nodes[i].Name)
+	// Region is display metadata, not part of dae's validated identity report.
+	// Keep the caller's inventory untouched so it can be sent to the cloud.
+	displayNodes := make([]model.CustomerNode, 0, len(nodes))
+	for _, node := range nodes {
+		displayNode := node
+		displayNode.Region = selection.RegionForName(node.Name)
+		displayNodes = append(displayNodes, displayNode)
 	}
 	var err error
-	if state["nodes"], err = json.Marshal(nodes); err != nil {
+	if state["nodes"], err = json.Marshal(displayNodes); err != nil {
 		return nil, err
 	}
 	if state["preferences"], err = json.Marshal(prefs); err != nil {
@@ -124,7 +129,15 @@ func safePolicyNodes(nodes []model.CustomerNode) ([]model.Node, error) {
 func customerNodes(nodes []model.Node) []model.CustomerNode {
 	out := make([]model.CustomerNode, 0, len(nodes))
 	for _, node := range nodes {
-		out = append(out, model.CustomerNode{ID: node.ID, Name: node.Name, Region: selection.RegionForName(node.Name)})
+		out = append(out, model.CustomerNode{ID: node.ID, Name: node.Name})
+	}
+	return out
+}
+
+func nodeIdentities(nodes []model.CustomerNode) []model.CustomerNode {
+	out := make([]model.CustomerNode, 0, len(nodes))
+	for _, node := range nodes {
+		out = append(out, model.CustomerNode{ID: node.ID, Name: node.Name})
 	}
 	return out
 }

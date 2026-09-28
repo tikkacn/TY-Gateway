@@ -1,0 +1,33 @@
+[Unit]
+Description=TY Gateway per-device FRP authorization plugin
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# Match this account to the one running FRPS so both can read the 0600 token.
+User=frp
+Group=frp
+EnvironmentFile=/etc/ty-frp-auth/ty-frp-auth.env
+ExecStart=/usr/local/bin/ty-frp-auth
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+StateDirectory=ty-frp-auth
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+ReadOnlyPaths=/etc/frp /etc/ty-frp-auth
+
+[Install]
+WantedBy=multi-user.target

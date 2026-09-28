@@ -35,14 +35,14 @@ func (s *Server) frpRoster(w http.ResponseWriter, r *http.Request) {
 	}
 	approved := make(map[string]bool, len(preparations))
 	for _, p := range preparations {
-		if p.ClaimedAt != nil && p.DeviceID != "" {
+		if p.ClaimedAt != nil && p.DeviceID != "" && p.ClaimMode == "mac" {
 			approved[p.DeviceID] = true
 		}
 	}
 	roster := frpauth.Roster{GeneratedAt: time.Now().UTC(), Entries: make([]frpauth.Entry, 0, len(devices))}
 	for _, d := range devices {
 		if !approved[d.ID] || d.State != model.DeviceEnabled || d.RescueSSHPort < s.FRPRosterPortStart || d.RescueSSHPort > s.FRPRosterPortEnd {
-			continue // Legacy devices and port 22000 are never migrated implicitly.
+			continue // Only MAC-claimed devices use the automatic per-device listener.
 		}
 		a, err := s.Store.GetDeviceAuth(ctx, d.ID)
 		if err != nil || a.State != model.DeviceEnabled {

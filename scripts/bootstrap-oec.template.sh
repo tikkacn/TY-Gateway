@@ -10,8 +10,8 @@ fetch_sha256='@FETCH_SHA256@'
 public_key_base64='@PUBLIC_KEY_BASE64@'
 public_key_sha256='78756e159ec392b52b146b049db79b0d94848ee10359841f58877aad192f1a3f'
 github_release_url="https://github.com/tikkacn/TY-Gateway/releases/download/v${release_version}"
-r2_release_url="https://oec.uutec.net/releases/${release_version}"
-r2_fetch_url="https://oec.uutec.net/bootstrap/${release_version}/ty-release-fetch-linux-arm64"
+r2_release_url='@R2_RELEASE_URL@'
+r2_fetch_url='@R2_FETCH_URL@'
 dae_version='2.1.1'
 dae_sha256='e7ecc9600df20163e90b9cab018f522e090996993c971ad0c271fb5b33c3a387'
 dae_url="https://github.com/daeuniverse/dae/releases/download/v${dae_version}/dae-linux-arm64.deb"
@@ -46,6 +46,18 @@ flock -n 9 || { echo 'Another TY Gateway installation is running.' >&2; exit 2; 
 
 bootstrap_state_dir=/var/lib/ty-gateway-bootstrap
 bootstrap_state_file="$bootstrap_state_dir/state"
+report_onboarding_status() {
+  if [[ -f /var/lib/ty-gateway/credentials.json ]]; then
+    echo 'Cloud enrollment: device credentials are saved.'
+  else
+    echo 'Cloud enrollment: pending. The Agent will retry; verify that this device MAC is pre-registered.'
+  fi
+  if [[ -f /var/lib/ty-gateway/frpc-auto.toml ]]; then
+    echo 'Automatic FRP: device configuration received. Verify real SSH reachability in the administrator console.'
+  else
+    echo 'Automatic FRP: not provisioned yet. A reserved port or completed software install is not a working tunnel.'
+  fi
+}
 if [[ -e "$bootstrap_state_dir" || -L "$bootstrap_state_dir" ]]; then
   [[ -d "$bootstrap_state_dir" && ! -L "$bootstrap_state_dir" ]] || {
     echo 'Bootstrap state directory is unsafe.' >&2; exit 2;
@@ -65,7 +77,8 @@ if [[ "$bootstrap_state" == complete ]]; then
   [[ -x /usr/local/bin/ty-gateway-agent ]] || {
     echo 'Bootstrap was marked complete but its Agent is missing; use the signed software repair process.' >&2; exit 2;
   }
-  echo 'TY Gateway first installation already completed; no files or services were changed.'
+  echo 'TY Gateway software installation already completed; no files or services were changed.'
+  report_onboarding_status
   exit 0
 fi
 if [[ -z "$bootstrap_state" ]] && { [[ -e /usr/local/bin/ty-gateway-agent ]] || [[ -e /var/lib/ty-gateway/credentials.json ]]; }; then
@@ -178,6 +191,10 @@ download_exact() {
        --connect-timeout 10 --max-time 240 "$primary" -o "$target"; then
     return 0
   fi
+  if [[ -z "$backup" ]]; then
+    echo 'GitHub download failed; this bootstrap has no fallback source configured.' >&2
+    return 1
+  fi
   curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
     --connect-timeout 10 --max-time 240 "$backup" -o "$target"
 }
@@ -252,6 +269,8 @@ dae_unit="$work_dir/dae/usr/lib/systemd/system/dae.service"
 cat > "$work_dir/initial-config.dae" <<'DAE_CONFIG'
 include {
   /etc/dae/ty-gateway/managed.dae
+}
+global {
 }
 DAE_CONFIG
 cat > "$work_dir/initial-managed.dae" <<'DAE_MANAGED'
@@ -334,6 +353,13 @@ else
   systemctl disable dae >/dev/null 2>&1 || true
 fi
 
+# The direct-only bootstrap config must pass the same DAE parser gate as later
+# cloud policies. A missing required section must not be marked installed.
+if ! /usr/bin/dae validate -c /etc/dae/config.dae; then
+  echo 'Initial DAE configuration failed validation; keeping bootstrap in-progress.' >&2
+  exit 2
+fi
+
 echo "Installing signed TY Gateway $release_version ($channel) and DAE $dae_version."
 TY_OVERLAY_REPAIR_INITIAL_INSTALL=1 /bin/bash "$staged/install-oec-overlay.sh"
 
@@ -359,7 +385,8 @@ if systemctl is-active --quiet dae || systemctl is-enabled --quiet dae; then
 fi
 mark_bootstrap_state complete
 
-echo 'Installation completed. DHCP, LAN DNS, and DAE proxy routing remain off by default.'
+echo 'Software installation completed. DHCP, LAN DNS, and DAE proxy routing remain off by default.'
+report_onboarding_status
 if [[ -z "$kernel_config" ]]; then
   echo "DAE kernel configuration: unknown (no readable kernel config for $kernel_version); BTF/BPF filesystem checks alone are not conclusive."
 elif ((${#kernel_missing[@]})); then

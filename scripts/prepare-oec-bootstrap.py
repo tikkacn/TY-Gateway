@@ -28,6 +28,7 @@ FETCH_NAME = "ty-release-fetch-linux-arm64"
 DAE_NAME = "dae-linux-arm64-v2.1.1.deb"
 DAE_SHA256 = "e7ecc9600df20163e90b9cab018f522e090996993c971ad0c271fb5b33c3a387"
 PINNED_KEY_SHA256 = "78756e159ec392b52b146b049db79b0d94848ee10359841f58877aad192f1a3f"
+R2_BASE_URL = "https://oec.uutec.net"
 
 
 def sha256_file(path):
@@ -77,6 +78,27 @@ def check_fetch_matches_signed_archive(fetch, archive):
     return digest
 
 
+def render_bootstrap_template(template, manifest, fetch_hash, public_key, enable_r2_fallback=False):
+    if enable_r2_fallback and manifest["channel"] != "stable":
+        raise ValueError("R2 fallback is reserved for stable releases; Pilot bootstraps must use GitHub only")
+    version = manifest["version"]
+    r2_release = f"{R2_BASE_URL}/releases/{version}" if enable_r2_fallback else ""
+    r2_fetch = f"{R2_BASE_URL}/bootstrap/{version}/ty-release-fetch-linux-arm64" if enable_r2_fallback else ""
+    replacements = {
+        "@RELEASE_VERSION@": version,
+        "@RELEASE_CHANNEL@": manifest["channel"],
+        "@FETCH_SHA256@": fetch_hash,
+        "@PUBLIC_KEY_BASE64@": base64.b64encode(public_key).decode("ascii"),
+        "@R2_RELEASE_URL@": r2_release,
+        "@R2_FETCH_URL@": r2_fetch,
+    }
+    for placeholder, value in replacements.items():
+        template = template.replace(placeholder, value)
+    if re.search(r"@[A-Z_]+@", template):
+        raise ValueError("bootstrap template has unresolved placeholders")
+    return template
+
+
 def prepare(args):
     for source in (args.bundle, args.artifact, args.public_key, args.fetch, args.verifier, args.dae_package):
         if not source.is_file() or source.is_symlink():
@@ -92,13 +114,10 @@ def prepare(args):
                    check=True, stdout=subprocess.DEVNULL)
     manifest = signed_manifest(args.bundle)
     fetch_hash = check_fetch_matches_signed_archive(args.fetch, args.artifact)
-    script = TEMPLATE.read_text(encoding="utf-8")
-    script = script.replace("@RELEASE_VERSION@", manifest["version"])
-    script = script.replace("@RELEASE_CHANNEL@", manifest["channel"])
-    script = script.replace("@FETCH_SHA256@", fetch_hash)
-    script = script.replace("@PUBLIC_KEY_BASE64@", base64.b64encode(args.public_key.read_bytes()).decode("ascii"))
-    if re.search(r"@[A-Z_]+@", script):
-        raise ValueError("bootstrap template has unresolved placeholders")
+    script = render_bootstrap_template(
+        TEMPLATE.read_text(encoding="utf-8"), manifest, fetch_hash,
+        args.public_key.read_bytes(), enable_r2_fallback=args.enable_r2_fallback,
+    )
     output = args.output.resolve()
     if output.exists():
         raise FileExistsError(f"refusing to overwrite output directory: {output}")
@@ -121,6 +140,10 @@ def prepare(args):
     print(f"prepared pinned TY Gateway bootstrap kit for {manifest['channel']} {manifest['version']}: {output}")
     print("For local package use: bootstrap-oec.sh --package-dir <this directory>.")
     print("The installer still needs network access for apt dependencies. The TY Gateway and DAE payloads are bundled locally.")
+    if args.enable_r2_fallback:
+        print("Generated stable bootstrap with GitHub primary and TY Gateway R2 fallback.")
+    else:
+        print("Generated GitHub-only bootstrap; no R2 URLs are embedded.")
     print("NOT PUBLISHED. Fresh-device testing and source/package review are still required.")
 
 
@@ -128,6 +151,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("bundle", "artifact", "public-key", "fetch", "verifier", "dae-package", "output"):
         parser.add_argument("--" + name, required=True, type=pathlib.Path)
+    parser.add_argument("--enable-r2-fallback", action="store_true",
+                        help="embed TY Gateway R2 fallback URLs for a stable release only")
     prepare(parser.parse_args())
 
 

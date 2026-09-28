@@ -51,6 +51,7 @@ type Server struct {
 	AllowHTTPSubs      bool
 	RuleCacheDir       string
 	Rescue             *model.RescueConfig
+	LegacyFRPRetired   bool
 	AutoFRP            *model.AutoFRPConfig
 	AutoFRPPortStart   int
 	AutoFRPPortEnd     int
@@ -109,6 +110,7 @@ type rescueOverview struct {
 	ControlPort        int                `json:"control_port"`
 	RemotePortStart    int                `json:"remote_port_start"`
 	RemotePortEnd      int                `json:"remote_port_end"`
+	LegacyRetired      bool               `json:"legacy_retired"`
 	AutoFRPHost        string             `json:"auto_frp_host,omitempty"`
 	AutoFRPControlPort int                `json:"auto_frp_control_port,omitempty"`
 	AutoFRPPortStart   int                `json:"auto_frp_port_start,omitempty"`
@@ -117,7 +119,7 @@ type rescueOverview struct {
 }
 
 func NewServer(st store.Store, adminToken string, subscriptionKey []byte) *Server {
-	return &Server{Store: st, AdminToken: adminToken, SubscriptionKey: subscriptionKey, CustomerSessionKey: customer.SessionKey(subscriptionKey), OfflineAfter: 90 * time.Second, FRPS: FRPSAdminConfig{ControlPort: 7001, RemotePortStart: 22000, RemotePortEnd: 22099}, AutoFRPPortStart: 22100, AutoFRPPortEnd: 22999, FRPRosterPortStart: 22001, FRPRosterPortEnd: 22099, Engine: rules.New(), Nonces: auth.NewNonceCache(10 * time.Minute), Logger: log.New(io.Discard, "", 0)}
+	return &Server{Store: st, AdminToken: adminToken, SubscriptionKey: subscriptionKey, CustomerSessionKey: customer.SessionKey(subscriptionKey), OfflineAfter: 90 * time.Second, FRPS: FRPSAdminConfig{ControlPort: 7001, RemotePortStart: 22000, RemotePortEnd: 22999}, AutoFRPPortStart: 22000, AutoFRPPortEnd: 22999, FRPRosterPortStart: 22000, FRPRosterPortEnd: 22999, Engine: rules.New(), Nonces: auth.NewNonceCache(10 * time.Minute), Logger: log.New(io.Discard, "", 0)}
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -290,10 +292,11 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	macClaim := s.RequireActivation && in.ActivationCode == ""
-	if d.RescueSSHPort == 0 && (s.AutoFRP != nil || (!macClaim && s.Rescue != nil)) && (d.State == model.DeviceEnabled || !s.RequireActivation) {
+	autoClaim := macClaim || !s.RequireActivation
+	if d.RescueSSHPort == 0 && ((autoClaim && s.AutoFRP != nil) || (!macClaim && !s.LegacyFRPRetired && s.Rescue != nil)) && (d.State == model.DeviceEnabled || !s.RequireActivation) {
 		var port int
 		var allocateErr error
-		if s.AutoFRP != nil {
+		if autoClaim && s.AutoFRP != nil {
 			port, allocateErr = s.allocateAutoFRPPort(r.Context(), d.ID)
 		} else if validRescuePortRange(s.FRPS) {
 			port, allocateErr = s.allocateRescuePort(r.Context(), d.ID)
@@ -414,7 +417,7 @@ func (s *Server) allocatePortInRange(ctx context.Context, deviceID, host string,
 }
 
 func (s *Server) rescueConfigForDevice(d model.Device) *model.RescueConfig {
-	if s.Rescue == nil {
+	if s.Rescue == nil || s.LegacyFRPRetired {
 		return nil
 	}
 	rescue := *s.Rescue
@@ -442,10 +445,13 @@ func (s *Server) rescueRouteForDevice(ctx context.Context, deviceID string) (hos
 			return "", 0, 0, 0, "", listErr
 		}
 		for _, enrollment := range enrollments {
-			if enrollment.DeviceID == d.ID && enrollment.ClaimedAt != nil {
+			if enrollment.DeviceID == d.ID && enrollment.ClaimedAt != nil && enrollment.ClaimMode == "mac" {
 				return s.AutoFRP.Host, s.AutoFRP.ControlPort, s.AutoFRPPortStart, s.AutoFRPPortEnd, "per-device", nil
 			}
 		}
+	}
+	if s.LegacyFRPRetired {
+		return "", 0, 0, 0, "", errors.New("legacy FRP listener is retired")
 	}
 	if !validRescuePortRange(s.FRPS) {
 		return "", 0, 0, 0, "", errors.New("legacy rescue port range is unavailable")
@@ -669,7 +675,7 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	autoFRPApproved := false
-	if d.State == model.DeviceEnabled && (s.AutoFRP != nil || (d.RescueSSHPort == 0 && s.Rescue != nil)) {
+	if d.State == model.DeviceEnabled && (s.AutoFRP != nil || (!s.LegacyFRPRetired && d.RescueSSHPort == 0 && s.Rescue != nil)) {
 		enrollments, listErr := s.Store.ListDeviceEnrollments(r.Context())
 		if listErr != nil {
 			s.Logger.Printf("rescue enrollment lookup will retry for device %s: %v", d.ID, listErr)
@@ -682,7 +688,7 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request, id string) {
 				if enrollment.DeviceID != d.ID || enrollment.ClaimedAt == nil {
 					continue
 				}
-				autoFRPApproved = true
+				autoFRPApproved = enrollment.ClaimMode == "mac"
 				if d.RescueSSHPort != 0 {
 					break
 				}
@@ -694,9 +700,9 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request, id string) {
 				}
 				var port int
 				var allocationErr error
-				if s.AutoFRP != nil {
+				if autoFRPApproved && s.AutoFRP != nil {
 					port, allocationErr = s.allocateAutoFRPPort(r.Context(), d.ID)
-				} else if validRescuePortRange(s.FRPS) {
+				} else if !s.LegacyFRPRetired && s.Rescue != nil && validRescuePortRange(s.FRPS) {
 					port, allocationErr = s.allocateRescuePort(r.Context(), d.ID)
 				} else {
 					allocationErr = errors.New("rescue port range is unavailable")
@@ -903,7 +909,7 @@ func (s *Server) adminRescueOverview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "rescue subscriptions unavailable")
 		return
 	}
-	if s.FRPS.RemotePortStart < 1 || s.FRPS.RemotePortEnd < s.FRPS.RemotePortStart || s.FRPS.RemotePortEnd > 65535 {
+	if !s.LegacyFRPRetired && (s.FRPS.RemotePortStart < 1 || s.FRPS.RemotePortEnd < s.FRPS.RemotePortStart || s.FRPS.RemotePortEnd > 65535) {
 		writeError(w, http.StatusServiceUnavailable, "rescue port range is not configured")
 		return
 	}
@@ -915,7 +921,7 @@ func (s *Server) adminRescueOverview(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, enrollment := range enrollments {
-			if enrollment.ClaimedAt != nil && enrollment.DeviceID != "" {
+			if enrollment.ClaimedAt != nil && enrollment.DeviceID != "" && enrollment.ClaimMode == "mac" {
 				autoApproved[enrollment.DeviceID] = true
 			}
 		}
@@ -924,12 +930,18 @@ func (s *Server) adminRescueOverview(w http.ResponseWriter, r *http.Request) {
 	for _, sub := range subscriptions {
 		subscriptionNames[sub.ID] = sub.Name
 	}
-	result := rescueOverview{Host: strings.TrimSpace(s.FRPS.Host), ControlPort: s.FRPS.ControlPort, RemotePortStart: s.FRPS.RemotePortStart, RemotePortEnd: s.FRPS.RemotePortEnd, Devices: make([]rescueDeviceView, 0, len(devices))}
+	result := rescueOverview{Host: strings.TrimSpace(s.FRPS.Host), ControlPort: s.FRPS.ControlPort, RemotePortStart: s.FRPS.RemotePortStart, RemotePortEnd: s.FRPS.RemotePortEnd, LegacyRetired: s.LegacyFRPRetired, Devices: make([]rescueDeviceView, 0, len(devices))}
 	if s.AutoFRP != nil && s.validAutoFRPPortRange() {
 		result.AutoFRPHost = s.AutoFRP.Host
 		result.AutoFRPControlPort = s.AutoFRP.ControlPort
 		result.AutoFRPPortStart = s.AutoFRPPortStart
 		result.AutoFRPPortEnd = s.AutoFRPPortEnd
+		if s.LegacyFRPRetired {
+			result.Host = s.AutoFRP.Host
+			result.ControlPort = s.AutoFRP.ControlPort
+			result.RemotePortStart = s.AutoFRPPortStart
+			result.RemotePortEnd = s.AutoFRPPortEnd
+		}
 	}
 	for _, d := range devices {
 		entry := rescueDeviceView{ID: d.ID, DeviceNumber: d.DeviceNumber, Serial: d.Serial, MAC: d.MAC, Name: d.Name, Email: d.Email, Note: d.Note, State: string(d.State), DeviceOnline: d.Online, LastSeen: d.LastSeen, Subscription: subscriptionNames[d.SubscriptionID], TunnelStatus: "unverified"}
@@ -943,7 +955,7 @@ func (s *Server) adminRescueOverview(w http.ResponseWriter, r *http.Request) {
 			entry.FRPSControlPort = s.AutoFRP.ControlPort
 			entry.FRPPortStart, entry.FRPPortEnd = s.AutoFRPPortStart, s.AutoFRPPortEnd
 			entry.PortAvailable = d.RescueSSHPort >= s.AutoFRPPortStart && d.RescueSSHPort <= s.AutoFRPPortEnd
-		} else if d.RescueSSHPort >= s.FRPS.RemotePortStart && d.RescueSSHPort <= s.FRPS.RemotePortEnd {
+		} else if !s.LegacyFRPRetired && d.RescueSSHPort >= s.FRPS.RemotePortStart && d.RescueSSHPort <= s.FRPS.RemotePortEnd {
 			entry.FRPMode = "legacy"
 			entry.FRPSHost = strings.TrimSpace(s.FRPS.Host)
 			entry.FRPSControlPort = s.FRPS.ControlPort
@@ -1017,7 +1029,13 @@ func (s *Server) updateRescuePort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	deviceID, port := strings.TrimSpace(v.DeviceID), *v.Port
-	_, _, start, end, _, routeErr := s.rescueRouteForDevice(r.Context(), deviceID)
+	start, end := 0, 0
+	var routeErr error
+	if port != 0 {
+		_, _, start, end, _, routeErr = s.rescueRouteForDevice(r.Context(), deviceID)
+	} else {
+		_, routeErr = s.Store.GetDevice(r.Context(), deviceID)
+	}
 	if routeErr != nil {
 		if errors.Is(routeErr, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "device not found")
@@ -1069,8 +1087,8 @@ func (s *Server) updateDevice(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		current, e := s.Store.GetDevice(r.Context(), v.ID)
-		if e != nil || !strings.HasPrefix(current.AgentVersion, "0.6.") {
-			writeError(w, 409, "请先升级设备 Agent 至 0.6")
+		if e != nil || !supportsManagedRulePackages(current.AgentVersion) {
+			writeError(w, 409, "请先升级设备 Agent 至 0.6.0 或更高版本")
 			return
 		}
 	}

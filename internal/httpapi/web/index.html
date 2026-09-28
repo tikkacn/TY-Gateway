@@ -253,10 +253,10 @@
         if(!info)return;
         const query=$('rescueSearch').value.trim().toLowerCase();
         const devices=(info.devices||[]).filter(d=>[d.device_number,d.serial,d.mac,d.name,d.email,d.note,d.subscription].join(' ').toLowerCase().includes(query));
-        $('rescueSummary').textContent=`旧通道 ${info.host||'未配置'}:${info.control_port||'—'} (${info.remote_port_start}–${info.remote_port_end})${info.auto_frp_host?` · 自动通道 ${info.auto_frp_host}:${info.auto_frp_control_port} (${info.auto_frp_port_start}–${info.auto_frp_port_end})`:''} · ${info.devices?.length||0} 台设备`;
+        $('rescueSummary').textContent=info.legacy_retired?`自动通道 ${info.auto_frp_host||'未配置'}:${info.auto_frp_control_port||'—'} (${info.auto_frp_port_start||'—'}–${info.auto_frp_port_end||'—'}) · ${info.devices?.length||0} 台设备`:`旧通道 ${info.host||'未配置'}:${info.control_port||'—'} (${info.remote_port_start}–${info.remote_port_end})${info.auto_frp_host?` · 自动通道 ${info.auto_frp_host}:${info.auto_frp_control_port} (${info.auto_frp_port_start}–${info.auto_frp_port_end})`:' · 自动通道未启用'} · ${info.devices?.length||0} 台设备`;
         $('rescueCountLabel').textContent=`${devices.length} / ${info.devices?.length||0} 台`;
         $('rescueRows').innerHTML=devices.map(d=>`<tr><td><div class="primary-cell"><strong>#${pad(d.device_number)} ${esc(d.name||'未命名设备')}</strong><span class="mono">${esc(d.serial)} · ${esc(d.mac)}</span></div></td><td><div class="primary-cell"><strong>${esc(d.name||'未绑定用户代号')}</strong><span>${esc(d.email||'未绑定邮箱')}</span></div></td><td><div class="primary-cell"><strong>${esc(d.subscription||'未绑定订阅')}</strong><span>${esc(d.note||'无管理员备注')}</span></div></td><td>${d.port_available&&info.host?`<span class="mono">${esc(info.host)}:${esc(d.remote_port)}</span>`:d.port_available?`<span class="muted">FRPS 地址未配置 · 端口 ${esc(d.remote_port)}</span>`:d.port_assigned?'<span class="badge red">端口不在已登记范围</span>':'<span class="badge gray">未登记 SSH 端口</span>'}</td><td>${d.device_online?'<span class="badge green">在线</span>':'<span class="badge gray">离线</span>'}<div class="muted" style="margin-top:4px;font-size:11px">${fmtTime(d.last_seen)}</div></td><td><span class="badge gray">未验证</span></td><td><button class="btn secondary small" data-device="${esc(d.id)}">详情</button></td></tr>`).join('');
-        [...$('rescueRows').querySelectorAll('tr')].forEach((row,index)=>{const d=devices[index],cell=row.children[3];if(!d||!cell)return;if(d.port_available&&d.frps_host){cell.innerHTML=`<span class="mono">${esc(d.frps_host)}:${esc(d.remote_port)}</span><div class="muted">${d.frp_mode==='per-device'?'自动独立通道':'旧通道'}</div>`}});
+        [...$('rescueRows').querySelectorAll('tr')].forEach((row,index)=>{const d=devices[index],cell=row.children[3];if(!d||!cell)return;if(d.port_available&&d.frps_host){cell.innerHTML=`<span class="mono">${esc(d.frps_host)}:${esc(d.remote_port)}</span><div class="muted">${d.frp_mode==='per-device'?'自动独立通道 · 待检测':'旧式手工通道 · 仅登记端口'}</div>`}else if(info.legacy_retired&&d.port_assigned){cell.innerHTML='<span class="badge red">旧登记已退役</span>'}});
         $('rescueEmpty').classList.toggle('hidden',devices.length>0);
       }
       async function refreshRescue(){
@@ -399,7 +399,7 @@
         const probeSSH=rescueSection.querySelector('#probeTunnelBtn');
         if(probeSSH)probeSSH.disabled=!(rescue?.port_available&&frpHost);
         const frpNote=rescueSection.querySelector('.device-frp-note');
-        if(frpNote)frpNote.textContent='端口按设备登记的 FRP 通道分配，且同一端口只允许绑定一台设备。自动通道由 Agent 管理独立 FRPC；检测只读取 SSH 握手，不会尝试登录。';
+        if(frpNote)frpNote.textContent=rescue?.frp_mode==='per-device'?'此设备已分配自动独立通道，Agent 将管理专属 FRPC；端口分配不代表隧道已连通，需检测 SSH 握手。':rescue?.frp_mode==='legacy'?'这是旧式手工通道。登记端口不会启动 FRPC；通用安装包不含旧式共享凭据。新装设备需要云端启用独立自动通道。':'自动 FRP 尚未配置或未给此设备分配端口；设备在线不代表远程救援可用。';
         const commandSection=[...body.querySelectorAll('.drawer-section')].find(section=>section.querySelector('h3')?.textContent==='基本命令');
         if(commandSection)commandSection.before(rescueSection);else body.append(rescueSection);
       };

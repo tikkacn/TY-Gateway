@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +16,24 @@ import (
 )
 
 var packageNames = map[string]string{"managed_loyal": "Loyalsoldier 综合分流", "managed_meta": "MetaCubeX 综合分流", "managed_gfw": "GFWList + 服务分类", "managed_geo": "GeoIP + 服务分类"}
+
+var managedRuleAgentVersion = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[A-Za-z0-9][A-Za-z0-9.-]*)?$`)
+
+// Managed rule packages were introduced in 0.6.0. A newer minor or major
+// release must not be rejected merely because it no longer starts with 0.6.
+func supportsManagedRulePackages(agentVersion string) bool {
+	if len(agentVersion) > 64 {
+		return false
+	}
+	parts := managedRuleAgentVersion.FindStringSubmatch(agentVersion)
+	if parts == nil {
+		return false
+	}
+	major, majorErr := strconv.Atoi(parts[1])
+	minor, minorErr := strconv.Atoi(parts[2])
+	_, patchErr := strconv.Atoi(parts[3])
+	return majorErr == nil && minorErr == nil && patchErr == nil && (major > 0 || minor >= 6)
+}
 
 type rulePackage struct {
 	Profile       string         `json:"profile"`
@@ -133,8 +153,8 @@ func (s *Server) customerRulePackage(w http.ResponseWriter, r *http.Request, d m
 			writeError(w, 409, err.Error())
 			return
 		}
-		if !strings.HasPrefix(d.AgentVersion, "0.6.") {
-			writeError(w, 409, "请先升级设备 Agent 至规则包版本 0.6")
+		if !supportsManagedRulePackages(d.AgentVersion) {
+			writeError(w, 409, "请先升级设备 Agent 至 0.6.0 或更高版本")
 			return
 		}
 		updated, err := s.Store.UpdateDevice(r.Context(), d.ID, "", d.Note, v.Profile)

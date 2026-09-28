@@ -4,21 +4,19 @@ TY Gateway 是面向 ARM64 单网口旁路由设备的管理与分流软件。�
 
 ## 当前状态
 
-`v0.8.2` 是给第二台 Armbian 测试设备重试的一键安装 Pilot。它保留了首启写入修复，并为安装中断加入受保护的续装状态：重跑会重新核验签名包、补齐缺失文件与首次安装应启用的管理服务，不复制账号或设备身份。对旧版中断留下的 DAE，只有文件与默认关闭配置完全一致才复用；独立安装或修改过的 DAE 不会被覆盖。它尚未完成真机验收，不应自动部署到已有设备或用于生产环境。
+公开的 `v0.8.2` Pilot 尚未通过真机验收：OEC2 上发现 MAC/pending 身份不匹配、DAE 首配/转发问题，且自动 FRP 隧道未建立。该版本不包含当前开发分支的修正，不要再把它当作成功的一键安装包。候选版本仍在本地开发，未签名、未发布、未部署；待分阶段本地检查通过后再通知用户进行 OEC2 验收。
 
-测试设备联网并能访问 GitHub 时，可用以下命令启动安装：
+当前开发分支尚未发布：每设备自动 FRP 的 SSH 映射端口为 22000–22999；FRPC `serverPort` 与 FRPS `bindPort` 使用同一个控制端口 7001，设备凭据由 per-device 授权插件校验。OEC1 不再作为本轮测试设备；OEC2 的 22001 端口登记不等于隧道已连通。自动 FRP 还依赖 Cloud 新配置、FRPS 7001 插件配置及 roster。Pilot 安装器将默认只走 GitHub；R2 上传与备用源仅在稳定版准备阶段启用。代码通过本地测试不表示已部署到 Cloud、FRPS 或设备。
 
-```bash
-curl -fsSL https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.2/bootstrap-oec.sh | sudo bash
-```
+FRPS 还必须持有一个非空且只存于服务器的强 Token，并由 per-device 插件在原生 Token 校验前改写已授权设备的登录签名；这样插件漏配时设备会被 FRPS 拒绝。服务器侧配置要求见 [FRP 授权部署说明](docs/FRP-AUTH-DEPLOYMENT.md)。
 
-安装器会校验签名软件包；安装前不会启用 DHCP、局域网 DNS 或 DAE 代理。Armbian 的 apt 源仍需可访问。
+测试阶段不要运行旧的 `v0.8.2` 安装命令。按 [OEC 分阶段验收方案](docs/OEC-PILOT-ACCEPTANCE.md)先完成本地包、MAC 准入、规则/订阅、FRP、DAE 与真实转发的门槛，再准备 OEC2 真机测试。
 
 验收通过后，仓库会提供：
 
 - 新设备安装脚本，以及可通过 U 盘拷贝的离线安装包；
 - 经 TY Gateway 发布公钥验证的 ARM64 软件包；
-- GitHub 主源、独立 R2 备用源，下载失败时切换，验签失败时停止；
+- Pilot 从 GitHub 下载；稳定版准备阶段再接入独立 R2 备用源，验签失败时停止；
 - 已安装设备的本地更新入口；用户只能升级，管理员可以按设备发起受控更新或回退。
 
 GitHub 和 R2 只负责分发。设备身份、订阅、FRP 凭据、密码与私钥均不会放在公开仓库或发布包里。首次联网注册是否成功取决于管理员预登记、云端服务和设备实际网络；仅凭 MAC 认领适用于受控的小规模试点，不能当作强硬件身份验证。
@@ -27,11 +25,11 @@ GitHub 和 R2 只负责分发。设备身份、订阅、FRP 凭据、密码与�
 
 `release-public.pem` 是**公开验签公钥**，不是登录密码。正式安装必须同时通过签名、版本/平台、文件大小、SHA-256 和安装包内容检查。Pilot 供指定测试设备验收；stable 必须通过全新设备安装、离线升级、回退及重启恢复验证。不要从 issue、评论或非本仓库链接运行安装脚本，也不要在仓库中提交设备凭据或订阅内容。
 
-公开分发域名拟使用 `https://oec.uutec.net`，仅属于 TY Gateway 独立 R2 桶；Guide 项目的 `soft.uutec.net` 和桶不在本项目范围内。
+公开分发域名 `https://oec.uutec.net` 属于 TY Gateway 独立 R2 桶。本轮 Pilot 不上传 R2、不使用该域名；Guide 项目的 `soft.uutec.net` 和桶不在本项目范围内。
 
 ## 发布约定
 
-GitHub Release 的 `v<版本>` 标签保存不可变签名软件包、引导验签器及版本固定的一键安装脚本。TY Gateway 独立 R2 桶保存同一签名包，并镜像 `bootstrap/<版本>/bootstrap-oec.sh` 与验签器，作为备用下载源。未来的 `release-index` 分支保存 `channels/<channel>/linux-arm64/latest.json` 签名版本入口。新版本发布时，安装脚本、验签器和签名软件包必须都读回校验成功，才推进通道指针。公开仓库不保存签名私钥或 R2 写入凭据。
+Pilot 通过验收前不发布候选版本；验收中的 Pilot 使用 GitHub Release 作为唯一在线源。stable 阶段再考虑 TY Gateway 独立 R2 桶、备用源和 `release-index` 通道指针。公开仓库不保存签名私钥或 R2 写入凭据。
 
 Pilot 命令只用于这次第二台设备验收；根据实测结果修正后再决定是否发布 stable。
 

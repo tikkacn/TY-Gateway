@@ -35,8 +35,9 @@
   "rescue": {
     "location": "Shanghai",
     "server_port": 7001,
-    "purpose": "SSH maintenance only",
-    "remote_ports": "22000-22099",
+    "purpose": "per-device FRP SSH maintenance; Agent starts FRPC after Cloud authorization",
+    "remote_ports": "22000-22999",
+    "authentication": "device-and-port-derived credential over TLS; no shared token in image",
     "address_source": "cloud-provided, never hardcoded in the image"
   },
   "candidate_base": {

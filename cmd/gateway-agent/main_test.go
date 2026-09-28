@@ -42,6 +42,35 @@ func fakeValidatedNodes(count int) []model.CustomerNode {
 	return nodes
 }
 
+func TestValidatedNodeInventorySeparatesDisplayMetadata(t *testing.T) {
+	const id = "0123456789abcdef"
+	nodes := []model.CustomerNode{{ID: id, Name: "日本节点"}}
+	customer, err := stateWithValidatedNodes([]byte(`{"preferences":{},"nodes":[]}`), nodes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nodes[0].Region != "" {
+		t.Fatal("customer display metadata mutated the validated dae inventory")
+	}
+	var displayed struct {
+		Nodes []model.CustomerNode `json:"nodes"`
+	}
+	if err := json.Unmarshal(customer, &displayed); err != nil {
+		t.Fatal(err)
+	}
+	if len(displayed.Nodes) != 1 || displayed.Nodes[0].Region != "JP" {
+		t.Fatalf("customer display lost node region: %#v", displayed.Nodes)
+	}
+	identities := nodeIdentities([]model.CustomerNode{{ID: id, Name: "日本节点", Region: "JP", Group: "legacy"}})
+	if len(identities) != 1 || identities[0].ID != id || identities[0].Region != "" || identities[0].Group != "" {
+		t.Fatalf("cloud inventory includes display metadata: %#v", identities)
+	}
+	fromSnapshot := customerNodes([]model.Node{{ID: id, Name: "日本节点"}})
+	if len(fromSnapshot) != 1 || fromSnapshot[0].Region != "" {
+		t.Fatalf("snapshot inventory includes display metadata: %#v", fromSnapshot)
+	}
+}
+
 func TestCompiledSelectionsUseOnlyDaeValidatedNodes(t *testing.T) {
 	rules := []model.CompiledRule{{Action: "NODE:valid"}, {Action: "NODE:old"}, {Action: "DIRECT"}}
 	nodes := []model.CustomerNode{{ID: "valid", Name: "valid node"}}
@@ -547,6 +576,16 @@ func TestMakeDaePolicyFailsClosedAfterProxyExpiry(t *testing.T) {
 	}, true)
 	if policy.ProxyEnabled || !policy.SubscriptionPresent || len(policy.DirectHosts) != 1 || policy.DirectHosts[0] != "cloud.example.test" {
 		t.Fatalf("expired global proxy mode was not disabled or management host missing: %#v", policy)
+	}
+}
+
+func TestMakeDaePolicyKeepsAutomaticFRPControlDirect(t *testing.T) {
+	policy := makeDaePolicy("https://cloud.example.test", "eth0", model.DeviceConfig{
+		Rescue:  &model.RescueConfig{Host: "legacy.example.test"},
+		AutoFRP: &model.AutoFRPConfig{Host: "isolated.example.test", ControlPort: 7001, RemotePort: 22100},
+	}, true)
+	if len(policy.DirectHosts) != 3 || policy.DirectHosts[0] != "cloud.example.test" || policy.DirectHosts[1] != "legacy.example.test" || policy.DirectHosts[2] != "isolated.example.test" {
+		t.Fatalf("automatic FRP host is not protected from dae routing: %#v", policy.DirectHosts)
 	}
 }
 

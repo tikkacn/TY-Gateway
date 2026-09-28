@@ -23,7 +23,7 @@ func TestRulePackageSelectionAndDelivery(t *testing.T) {
 	}
 	st := store.NewMemoryStore()
 	s := NewServer(st, "admin", []byte("0123456789abcdef0123456789abcdef"))
-	d, _, e := st.RegisterDevice(context.Background(), model.RegisterDeviceInput{MAC: "02:00:00:00:06:01", AgentVersion: "0.6.0-managed-rules"})
+	d, _, e := st.RegisterDevice(context.Background(), model.RegisterDeviceInput{MAC: "02:00:00:00:06:01", AgentVersion: "0.8.0"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -54,5 +54,26 @@ func TestRulePackageSelectionAndDelivery(t *testing.T) {
 	s.customerRulePackage(w, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"operation":"select","profile":"managed_loyal"}`)), d)
 	if w.Code != 409 {
 		t.Fatal("old agent accepted")
+	}
+}
+
+func TestManagedRulePackageAgentVersionGate(t *testing.T) {
+	for _, test := range []struct {
+		version string
+		allowed bool
+	}{
+		{"", false},
+		{"0.5.9", false},
+		{"0.6.0", true},
+		{"0.6.0-managed-rules", true},
+		{"0.7.3", true},
+		{"0.8.0", true},
+		{"1.0.0", true},
+		{"0.6.bad", false},
+		{"0.08.0", false},
+	} {
+		if got := supportsManagedRulePackages(test.version); got != test.allowed {
+			t.Errorf("supportsManagedRulePackages(%q) = %t, want %t", test.version, got, test.allowed)
+		}
 	}
 }

@@ -13,6 +13,14 @@ import (
 	"tygateway/internal/store"
 )
 
+func TestNewServerUsesOneFRPControlPortAndMappingPool(t *testing.T) {
+	srv := NewServer(store.NewMemoryStore(), "admin-test", []byte("0123456789abcdef0123456789abcdef"))
+	if srv.FRPS.ControlPort != 7001 || srv.FRPS.RemotePortStart != 22000 || srv.FRPS.RemotePortEnd != 22999 ||
+		srv.AutoFRPPortStart != 22000 || srv.AutoFRPPortEnd != 22999 || srv.FRPRosterPortStart != 22000 || srv.FRPRosterPortEnd != 22999 {
+		t.Fatalf("FRP server, Agent config, and roster defaults must share control port 7001 and mapping pool 22000-22999: %#v", srv)
+	}
+}
+
 func TestPreparedMACClaimIsAtomicAndGatesSensitiveConfig(t *testing.T) {
 	ctx := context.Background()
 	st := store.NewMemoryStore()
@@ -122,7 +130,7 @@ func TestActivationGatePreservesExistingEnabledRescueDevice(t *testing.T) {
 	srv := NewServer(st, "admin-test", []byte("0123456789abcdef0123456789abcdef"))
 	srv.RequireActivation = true
 	srv.Rescue = &model.RescueConfig{Host: "127.0.0.1", Port: 7001}
-	srv.AutoFRP = &model.AutoFRPConfig{Host: "127.0.0.1", ControlPort: 7002, TLSCA: "public-ca"}
+	srv.AutoFRP = &model.AutoFRPConfig{Host: "127.0.0.1", ControlPort: 7001, TLSCA: "public-ca"}
 	srv.AutoFRPPortStart, srv.AutoFRPPortEnd = 22100, 22199
 	r := signedRequest(http.MethodGet, "/api/v1/device/"+d.ID+"/config", nil, d.ID, auth.SecretHash(secret))
 	w := httptest.NewRecorder()
@@ -140,14 +148,15 @@ func TestActivationGatePreservesExistingEnabledRescueDevice(t *testing.T) {
 	}
 }
 
-func TestMACClaimReceivesOnlyIsolatedAutoFRPConfig(t *testing.T) {
+func TestMACClaimReceivesFirstUnifiedAutoFRPPort(t *testing.T) {
 	ctx := context.Background()
 	st := store.NewMemoryStore()
 	srv := NewServer(st, "admin-test", []byte("0123456789abcdef0123456789abcdef"))
 	srv.RequireActivation = true
-	srv.AutoFRP = &model.AutoFRPConfig{Host: "frp.example.test", ControlPort: 7002, TLSCA: "public-ca"}
-	srv.AutoFRPPortStart, srv.AutoFRPPortEnd = 22100, 22199
-	srv.FRPRosterPortStart, srv.FRPRosterPortEnd = 22100, 22199
+	srv.LegacyFRPRetired = true
+	srv.AutoFRP = &model.AutoFRPConfig{Host: "frp.example.test", ControlPort: 7001, TLSCA: "public-ca"}
+	srv.AutoFRPPortStart, srv.AutoFRPPortEnd = 22000, 22999
+	srv.FRPRosterPortStart, srv.FRPRosterPortEnd = 22000, 22999
 	admin := httptest.NewRequest(http.MethodPost, "/api/v1/admin/enrollments", strings.NewReader(`{"mac":"02:00:00:00:70:03","note":"pilot"}`))
 	admin.Header.Set("X-TY-Admin-Token", "admin-test")
 	prepared := httptest.NewRecorder()
@@ -171,18 +180,18 @@ func TestMACClaimReceivesOnlyIsolatedAutoFRPConfig(t *testing.T) {
 		t.Fatalf("invalid claim response: %v", err)
 	}
 	d, err := st.GetDevice(ctx, registeredBody.Device.ID)
-	if err != nil || d.RescueSSHPort != 22100 {
+	if err != nil || d.RescueSSHPort != 22000 {
 		t.Fatalf("device did not receive a reserved isolated FRP port: %#v %v", d, err)
 	}
 	configRequest := signedRequest(http.MethodGet, "/api/v1/device/"+d.ID+"/config", nil, d.ID, auth.SecretHash(secret))
 	configResponse := httptest.NewRecorder()
 	srv.ServeHTTP(configResponse, configRequest)
 	var config model.DeviceConfig
-	if err := json.Unmarshal(configResponse.Body.Bytes(), &config); err != nil || config.AutoFRP == nil || config.AutoFRP.ControlPort != 7002 || config.AutoFRP.RemotePort != 22100 || config.AutoFRP.Host != "frp.example.test" {
+	if err := json.Unmarshal(configResponse.Body.Bytes(), &config); err != nil || config.AutoFRP == nil || config.AutoFRP.ControlPort != 7001 || config.AutoFRP.RemotePort != 22000 || config.AutoFRP.Host != "frp.example.test" {
 		t.Fatalf("device did not receive its isolated automatic FRP settings: %v %s", err, configResponse.Body.String())
 	}
-	if config.Rescue != nil && config.Rescue.RemotePort == 22000 {
-		t.Fatal("automatic FRP response crossed into the existing 22000 rescue channel")
+	if config.Rescue != nil {
+		t.Fatal("retired legacy rescue settings were still sent to the device")
 	}
 }
 
@@ -193,7 +202,6 @@ func TestMACClaimWaitsForIsolatedFRPWithoutReservingLegacyPort(t *testing.T) {
 	srv.RequireActivation = true
 	srv.Rescue = &model.RescueConfig{Host: "127.0.0.1", Port: 7001}
 	srv.FRPS.Host = "127.0.0.1"
-	srv.AutoFRPPortStart, srv.AutoFRPPortEnd = 22100, 22199
 
 	prepare := httptest.NewRequest(http.MethodPost, "/api/v1/admin/enrollments", strings.NewReader(`{"mac":"02:00:00:00:70:04"}`))
 	prepare.Header.Set("X-TY-Admin-Token", "admin-test")
@@ -238,12 +246,12 @@ func TestMACClaimWaitsForIsolatedFRPWithoutReservingLegacyPort(t *testing.T) {
 		t.Fatalf("MAC claim consumed a legacy port: %#v %v", before, err)
 	}
 
-	srv.AutoFRP = &model.AutoFRPConfig{Host: "frp.example.test", ControlPort: 7002, TLSCA: "public-ca"}
-	if got := config(); got.AutoFRP == nil || got.AutoFRP.RemotePort != 22100 {
+	srv.AutoFRP = &model.AutoFRPConfig{Host: "frp.example.test", ControlPort: 7001, TLSCA: "public-ca"}
+	if got := config(); got.AutoFRP == nil || got.AutoFRP.RemotePort != 22000 {
 		t.Fatalf("isolated FRP was not assigned after activation: %#v", got.AutoFRP)
 	}
 	after, err := st.GetDevice(ctx, result.Device.ID)
-	if err != nil || after.RescueSSHPort != 22100 {
+	if err != nil || after.RescueSSHPort != 22000 {
 		t.Fatalf("isolated FRP port was not persisted: %#v %v", after, err)
 	}
 }

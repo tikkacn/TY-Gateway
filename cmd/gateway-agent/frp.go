@@ -191,7 +191,7 @@ func (m *autoFRPManager) stopLocked() {
 }
 
 func renderAutoFRPConfig(state credentialState, config *model.AutoFRPConfig, caPath string) (string, string, error) {
-	if config == nil || state.DeviceID == "" || !validSecret(state.DeviceSecret) || !safeFRPHost(config.Host) || config.ControlPort < 1 || config.ControlPort > 65535 || config.RemotePort < 22001 || config.RemotePort > 65535 || config.RemotePort == config.ControlPort || strings.ContainsAny(state.DeviceID, ".:/\\\r\n\t ") {
+	if config == nil || state.DeviceID == "" || !validSecret(state.DeviceSecret) || !safeFRPHost(config.Host) || config.ControlPort != 7001 || config.RemotePort < 22000 || config.RemotePort > 22999 || strings.ContainsAny(state.DeviceID, ".:/\\\r\n\t ") {
 		return "", "", errors.New("automatic FRP configuration is incomplete or unsafe")
 	}
 	credential, err := frpauth.Credential(auth.SecretHash(state.DeviceSecret), state.DeviceID, config.RemotePort)
@@ -202,7 +202,10 @@ func renderAutoFRPConfig(state credentialState, config *model.AutoFRPConfig, caP
 	fmt.Fprintf(&b, "serverAddr = %s\nserverPort = %d\nuser = %s\nloginFailExit = true\n", strconv.Quote(config.Host), config.ControlPort, strconv.Quote(state.DeviceID))
 	fmt.Fprintf(&b, "transport.tls.enable = true\ntransport.tls.trustedCaFile = %s\n", strconv.Quote(caPath))
 	fmt.Fprintf(&b, "metadatas.device_id = %s\nmetadatas.rescue_key = %s\n", strconv.Quote(state.DeviceID), strconv.Quote(credential))
-	fmt.Fprintf(&b, "\n[[proxies]]\nname = %s\ntype = \"tcp\"\nlocalIP = \"127.0.0.1\"\nlocalPort = 22\nremotePort = %d\n", strconv.Quote(state.DeviceID+".ssh-rescue"), config.RemotePort)
+	// FRP prefixes every proxy name with the global `user`. Keep the local
+	// proxy name unprefixed so FRPS and the authorization plugin see
+	// `<device-id>.ssh-rescue`, not `<device-id>.<device-id>.ssh-rescue`.
+	fmt.Fprintf(&b, "\n[[proxies]]\nname = %s\ntype = \"tcp\"\nlocalIP = \"127.0.0.1\"\nlocalPort = 22\nremotePort = %d\n", strconv.Quote("ssh-rescue"), config.RemotePort)
 	return b.String(), credential, nil
 }
 

@@ -38,4 +38,4 @@ node_modules/
 !keys/ty-release-public.pem
 *.crt
 *.cer
-tycloud
+/tycloud

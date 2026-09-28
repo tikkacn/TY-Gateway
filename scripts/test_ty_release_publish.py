@@ -13,6 +13,9 @@ from unittest import mock
 spec = importlib.util.spec_from_file_location("publisher", pathlib.Path(__file__).with_name("ty-release-publish.py"))
 publisher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(publisher)
+prepare_spec = importlib.util.spec_from_file_location("bootstrap_preparer", pathlib.Path(__file__).with_name("prepare-oec-bootstrap.py"))
+bootstrap_preparer = importlib.util.module_from_spec(prepare_spec)
+prepare_spec.loader.exec_module(bootstrap_preparer)
 
 
 class MissingObject(Exception):
@@ -60,6 +63,31 @@ class PublisherTests(unittest.TestCase):
             "manifest": base64.b64encode(json.dumps(self.manifest).encode()).decode(),
             "signature": "signature-is-verified-by-go-tool-before-publish",
         }).encode()
+
+    def test_pilot_bootstrap_is_github_only_while_stable_can_use_r2_fallback(self):
+        pilot = publisher.render_bootstrap(self.manifest, b"public-key", b"verifier")
+        self.assertIn(b'github_release_url="https://github.com/tikkacn/TY-Gateway/releases/download/v${release_version}"', pilot)
+        self.assertNotIn(b"oec.uutec.net", pilot)
+        stable = publisher.render_bootstrap(dict(self.manifest, channel="stable"), b"public-key", b"verifier")
+        self.assertIn(b"https://oec.uutec.net/releases/0.7.0", stable)
+        self.assertIn(b"https://oec.uutec.net/bootstrap/0.7.0/ty-release-fetch-linux-arm64", stable)
+
+    def test_local_bootstrap_preparer_defaults_to_github_only_and_reserves_r2_for_stable(self):
+        template = bootstrap_preparer.TEMPLATE.read_text(encoding="utf-8")
+        pilot = bootstrap_preparer.render_bootstrap_template(
+            template, self.manifest, "a" * 64, b"public-key"
+        )
+        self.assertIn('github_release_url="https://github.com/tikkacn/TY-Gateway/releases/download/v${release_version}"', pilot)
+        self.assertNotIn("oec.uutec.net", pilot)
+        with self.assertRaisesRegex(ValueError, "stable releases"):
+            bootstrap_preparer.render_bootstrap_template(
+                template, self.manifest, "a" * 64, b"public-key", enable_r2_fallback=True
+            )
+        stable = bootstrap_preparer.render_bootstrap_template(
+            template, dict(self.manifest, channel="stable"), "a" * 64, b"public-key",
+            enable_r2_fallback=True,
+        )
+        self.assertIn("https://oec.uutec.net/releases/0.7.0", stable)
 
     def test_publishes_only_isolated_bucket_and_channel_last(self):
         s3 = FakeS3()

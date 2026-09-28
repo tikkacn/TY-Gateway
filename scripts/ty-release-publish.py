@@ -251,6 +251,14 @@ def render_bootstrap(manifest, public_key, fetch_binary):
         "@RELEASE_CHANNEL@": manifest["channel"],
         "@FETCH_SHA256@": hashlib.sha256(fetch_binary).hexdigest(),
         "@PUBLIC_KEY_BASE64@": base64.b64encode(public_key).decode("ascii"),
+        "@R2_RELEASE_URL@": (
+            f"https://oec.uutec.net/releases/{manifest['version']}"
+            if manifest["channel"] == "stable" else ""
+        ),
+        "@R2_FETCH_URL@": (
+            f"https://oec.uutec.net/bootstrap/{manifest['version']}/ty-release-fetch-linux-arm64"
+            if manifest["channel"] == "stable" else ""
+        ),
     }
     for placeholder, value in replacements.items():
         template = template.replace(placeholder, value)

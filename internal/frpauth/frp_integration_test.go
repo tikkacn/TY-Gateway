@@ -24,12 +24,13 @@ func TestFRP071RealSSHForwarding(t *testing.T) {
 		t.Skip("verified FRP binaries not provided")
 	}
 	const id = "device-integration"
+	const serverToken = "test-only-frps-auth-token-0123456789abcdef"
 	remote := freeLocalPort(t)
 	credential, err := Credential(strings.Repeat("a", 64), id, remote)
 	if err != nil {
 		t.Fatal(err)
 	}
-	plugin := NewPlugin(time.Hour, remote, remote)
+	plugin := NewPlugin(time.Hour, remote, remote, serverToken)
 	if err := plugin.SetRoster(Roster{GeneratedAt: time.Now().UTC(), Entries: []Entry{{DeviceID: id, Port: remote, CredentialHash: CredentialHash(credential)}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +63,7 @@ func TestFRP071RealSSHForwarding(t *testing.T) {
 	dir := t.TempDir()
 	serverConfig := filepath.Join(dir, "frps.toml")
 	clientConfig := filepath.Join(dir, "frpc.toml")
-	serverText := fmt.Sprintf("bindAddr = \"127.0.0.1\"\nbindPort = %d\nproxyBindAddr = \"127.0.0.1\"\ntransport.tls.force = true\nallowPorts = [{start = %d, end = %d}]\nmaxPortsPerClient = 1\n[[httpPlugins]]\nname = \"ty-auth\"\naddr = \"%s\"\npath = \"/handler\"\nops = [\"Login\", \"NewProxy\", \"Ping\", \"NewWorkConn\", \"NewUserConn\", \"CloseProxy\"]\n", control, remote, remote, hookAddr)
+	serverText := fmt.Sprintf("bindAddr = \"127.0.0.1\"\nbindPort = %d\nproxyBindAddr = \"127.0.0.1\"\ntransport.tls.force = true\nauth.token = %q\nallowPorts = [{start = %d, end = %d}]\nmaxPortsPerClient = 1\n[[httpPlugins]]\nname = \"ty-auth\"\naddr = \"%s\"\npath = \"/handler\"\nops = [\"Login\", \"NewProxy\", \"Ping\", \"NewWorkConn\", \"NewUserConn\", \"CloseProxy\"]\n", control, serverToken, remote, remote, hookAddr)
 	clientText := fmt.Sprintf("serverAddr = \"127.0.0.1\"\nserverPort = %d\nuser = \"%s\"\nmetadatas.device_id = \"%s\"\nmetadatas.rescue_key = \"%s\"\nloginFailExit = true\ntransport.tls.enable = true\n[[proxies]]\nname = \"ssh-rescue\"\ntype = \"tcp\"\nlocalIP = \"127.0.0.1\"\nlocalPort = %d\nremotePort = %d\n", control, id, id, credential, localSSH.Addr().(*net.TCPAddr).Port, remote)
 	if err := os.WriteFile(serverConfig, []byte(serverText), 0600); err != nil {
 		t.Fatal(err)
@@ -86,6 +87,34 @@ func TestFRP071RealSSHForwarding(t *testing.T) {
 		t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
 		return cmd
 	}
+	// With a non-empty server-only token, the generated client config must
+	// fail to log in when the mandatory authorization plugin is omitted.
+	noPluginPort := freeLocalPort(t)
+	noPluginConfig := filepath.Join(dir, "frps-no-plugin.toml")
+	noPluginText := fmt.Sprintf("bindAddr = \"127.0.0.1\"\nbindPort = %d\nproxyBindAddr = \"127.0.0.1\"\ntransport.tls.force = true\nauth.token = %q\n", noPluginPort, serverToken)
+	if err := os.WriteFile(noPluginConfig, []byte(noPluginText), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := exec.Command(frps, "verify", "-c", noPluginConfig).Run(); err != nil {
+		t.Fatalf("FRPS without plugin config verification failed: %v", err)
+	}
+	start(frps, noPluginConfig)
+	if !waitTCP("127.0.0.1", noPluginPort, 5*time.Second) {
+		t.Fatal("no-plugin FRPS listener did not start")
+	}
+	noPluginClientConfig := filepath.Join(dir, "frpc-no-plugin.toml")
+	noPluginClientText := strings.Replace(clientText, fmt.Sprintf("serverPort = %d", control), fmt.Sprintf("serverPort = %d", noPluginPort), 1)
+	if err := os.WriteFile(noPluginClientConfig, []byte(noPluginClientText), 0600); err != nil {
+		t.Fatal(err)
+	}
+	failedLoginCtx, cancelFailedLogin := context.WithTimeout(context.Background(), 5*time.Second)
+	loginStarted := time.Now()
+	failedLoginOutput, failedLoginErr := exec.CommandContext(failedLoginCtx, frpc, "-c", noPluginClientConfig).CombinedOutput()
+	cancelFailedLogin()
+	if failedLoginErr == nil || time.Since(loginStarted) >= 4*time.Second {
+		t.Fatalf("FRPC unexpectedly stayed connected without the mandatory FRPS plugin: err=%v output=%s", failedLoginErr, failedLoginOutput)
+	}
+
 	start(frps, serverConfig)
 	if !waitTCP("127.0.0.1", control, 5*time.Second) {
 		t.Fatal("local FRPS control listener did not start")

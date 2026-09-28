@@ -11,6 +11,7 @@ import (
 
 func TestCredentialAndPluginAuthorization(t *testing.T) {
 	const id = "device-01"
+	const serverToken = "test-only-frps-server-auth-token-0123456789"
 	credential, err := Credential(strings.Repeat("a", 64), id, 22001)
 	if err != nil || len(credential) != 64 {
 		t.Fatalf("credential: %v", err)
@@ -20,11 +21,11 @@ func TestCredentialAndPluginAuthorization(t *testing.T) {
 		t.Fatal("credential must be port-specific")
 	}
 	roster := Roster{GeneratedAt: time.Now().UTC(), Entries: []Entry{{DeviceID: id, Port: 22001, CredentialHash: CredentialHash(credential)}}}
-	p := NewPlugin(time.Hour, 22001, 22099)
+	p := NewPlugin(time.Hour, 22001, 22099, serverToken)
 	if err := p.SetRoster(roster); err != nil {
 		t.Fatal(err)
 	}
-	request := func(op, content string) bool {
+	request := func(op, content string) (*httptest.ResponseRecorder, bool) {
 		t.Helper()
 		body, _ := json.Marshal(map[string]any{"content": json.RawMessage(content)})
 		r := httptest.NewRequest(http.MethodPost, "/handler?version=0.1.0&op="+op, strings.NewReader(string(body)))
@@ -33,41 +34,87 @@ func TestCredentialAndPluginAuthorization(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Fatalf("plugin status %d", w.Code)
 		}
-		return strings.Contains(w.Body.String(), `"reject":false`)
+		return w, strings.Contains(w.Body.String(), `"reject":false`)
 	}
-	login := `{"user":"device-01","metas":{"device_id":"device-01","rescue_key":"` + credential + `"}}`
+	login := `{"user":"device-01","timestamp":1770000000,"version":"0.71.0","metas":{"device_id":"device-01","rescue_key":"` + credential + `"}}`
 	user := `{"user":{"user":"device-01","metas":{"device_id":"device-01","rescue_key":"` + credential + `"}}}`
 	workConn := `{"user":{"user":"device-01","run_id":"run-01","metas":{"device_id":"device-01","rescue_key":"` + credential + `"}},"run_id":"run-01"}`
-	if !request("Login", login) || !request("Ping", user) || !request("NewWorkConn", workConn) {
+	loginResponse, loginAllowed := request("Login", login)
+	if !loginAllowed {
+		t.Fatal("correct device credential rejected")
+	}
+	var modified struct {
+		Unchange bool `json:"unchange"`
+		Content  struct {
+			PrivilegeKey string `json:"privilege_key"`
+			Version      string `json:"version"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(loginResponse.Body.Bytes(), &modified); err != nil || modified.Unchange || modified.Content.PrivilegeKey != FRPAuthKey(serverToken, 1770000000) || modified.Content.Version != "0.71.0" {
+		t.Fatalf("Login was not safely rewritten for native FRPS token auth: response=%s err=%v", loginResponse.Body.String(), err)
+	}
+	if _, ok := request("Login", strings.Replace(login, credential, strings.Repeat("b", 64), 1)); ok {
+		t.Fatal("Login with an invalid per-device credential was accepted")
+	}
+	if _, ok := request("Ping", user); !ok {
+		t.Fatal("correct device credential rejected for ping")
+	}
+	if _, ok := request("NewWorkConn", workConn); !ok {
 		t.Fatal("correct device credential rejected")
 	}
 	validProxy := `{"user":{"user":"device-01","metas":{"device_id":"device-01","rescue_key":"` + credential + `"}},"proxy_name":"device-01.ssh-rescue","proxy_type":"tcp","remote_port":22001}`
-	if !request("NewProxy", validProxy) {
+	if _, ok := request("NewProxy", validProxy); !ok {
 		t.Fatal("correct SSH mapping rejected")
 	}
 	for _, bad := range []string{
 		strings.Replace(validProxy, `"remote_port":22001`, `"remote_port":22002`, 1),
 		strings.Replace(validProxy, `"proxy_type":"tcp"`, `"proxy_type":"http"`, 1),
 		strings.Replace(validProxy, `"proxy_name":"device-01.ssh-rescue"`, `"proxy_name":"admin"`, 1),
+		strings.Replace(validProxy, `"proxy_name":"device-01.ssh-rescue"`, `"proxy_name":"device-01.device-01.ssh-rescue"`, 1),
 		strings.Replace(validProxy, `"remote_port":22001`, `"remote_port":22001,"group":"shared"`, 1),
 		strings.Replace(validProxy, credential, strings.Repeat("b", 64), 1),
 		strings.Replace(validProxy, `"device_id":"device-01"`, `"device_id":"device-02"`, 1),
 	} {
-		if request("NewProxy", bad) {
+		if _, ok := request("NewProxy", bad); ok {
 			t.Fatalf("unauthorized proxy accepted: %s", bad)
 		}
 	}
-	if request("UnknownOp", user) || request("Login", `{}`) {
+	if _, ok := request("UnknownOp", user); ok {
+		t.Fatal("unknown operation accepted")
+	}
+	if _, ok := request("Login", `{}`); ok {
 		t.Fatal("unknown operation or empty login accepted")
 	}
-	if request("NewWorkConn", strings.Replace(workConn, `"run_id":"run-01"}`, `"run_id":"other"}`, 1)) {
+	if _, ok := request("NewWorkConn", strings.Replace(workConn, `"run_id":"run-01"}`, `"run_id":"other"}`, 1)); ok {
 		t.Fatal("work connection with mismatched run ID accepted")
 	}
 	if err := p.SetRoster(Roster{GeneratedAt: time.Now().Add(-2 * time.Hour)}); err == nil {
 		t.Fatal("stale roster was accepted")
 	}
-	if !request("Login", login) {
+	if _, ok := request("Login", login); !ok {
 		t.Fatal("failed roster update discarded last good state")
+	}
+}
+
+func TestPluginIsNotReadyWithoutServerOnlyToken(t *testing.T) {
+	p := NewPlugin(time.Hour, 22000, 22999, "")
+	if err := p.SetRoster(Roster{GeneratedAt: time.Now().UTC(), Entries: []Entry{{DeviceID: "device-01", Port: 22000, CredentialHash: strings.Repeat("a", 64)}}}); err != nil {
+		t.Fatal(err)
+	}
+	if p.Ready() {
+		t.Fatal("plugin became ready without the server-only FRPS token")
+	}
+	r := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	w := httptest.NewRecorder()
+	p.ServeHTTP(w, r)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("health check status without server token = %d, want 503", w.Code)
+	}
+}
+
+func TestFRPAuthKeyMatchesProtocolVector(t *testing.T) {
+	if got, want := FRPAuthKey("12345678", 1234567890), "ce4334ceaa9e41d450d15fa3c0344ec2"; got != want {
+		t.Fatalf("FRP v0.71.0 token signature mismatch: got %s want %s", got, want)
 	}
 }
 

@@ -511,6 +511,11 @@ seed_local_device_code() {
   grep -q '^TY_LOCAL_DEVICE_CODE=' "$local_env" 2>/dev/null && return 0
   local interface_name
   interface_name="$(sed -n 's/^TY_LOCAL_INTERFACE=//p' "$local_env" | head -n 1 | tr -d '\r' | xargs)"
+  if [[ -z "$interface_name" ]] && [[ "${TY_OVERLAY_TEST_MODE:-0}" != 1 ]] && command -v ip >/dev/null 2>&1; then
+    # The example env intentionally leaves the LAN interface blank. Select
+    # the same active IPv4 default-route interface that the Agent uses.
+    interface_name="$(ip -4 route show default | awk '$1 == "default" { for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')"
+  fi
   [[ "$interface_name" =~ ^[A-Za-z0-9_.:-]+$ ]] || return 0
   local mac_file="$(target "/sys/class/net/${interface_name}/address")"
   [[ -r "$mac_file" ]] || return 0

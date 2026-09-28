@@ -22,12 +22,13 @@ import (
 const maxRosterAge = 24 * time.Hour
 
 type settings struct {
-	listen    string
-	rosterURL string
-	tokenFile string
-	cacheFile string
-	portStart int
-	portEnd   int
+	listen          string
+	rosterURL       string
+	tokenFile       string
+	serverTokenFile string
+	cacheFile       string
+	portStart       int
+	portEnd         int
 }
 
 func main() {
@@ -35,7 +36,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	plugin := frpauth.NewPlugin(maxRosterAge, cfg.portStart, cfg.portEnd)
+	serverToken, err := loadServerAuthToken(cfg.serverTokenFile)
+	if err != nil {
+		log.Fatal("FRPS server auth token is unavailable or insecure")
+	}
+	plugin := frpauth.NewPlugin(maxRosterAge, cfg.portStart, cfg.portEnd, serverToken)
 	if roster, err := loadCache(cfg.cacheFile); err == nil {
 		if err := plugin.SetRoster(roster); err != nil {
 			log.Print("cached FRP roster is unusable")
@@ -79,7 +84,9 @@ func main() {
 }
 
 func settingsFromEnv() (settings, error) {
-	cfg := settings{listen: "127.0.0.1:9081", rosterURL: os.Getenv("TY_FRP_ROSTER_URL"), tokenFile: os.Getenv("TY_FRP_ROSTER_TOKEN_FILE"), cacheFile: os.Getenv("TY_FRP_ROSTER_CACHE"), portStart: 22001, portEnd: 22099}
+	// The plugin serves only the per-device listener. Retire the old FRPS
+	// listener before assigning its former ports to this one.
+	cfg := settings{listen: "127.0.0.1:9081", rosterURL: os.Getenv("TY_FRP_ROSTER_URL"), tokenFile: os.Getenv("TY_FRP_ROSTER_TOKEN_FILE"), serverTokenFile: os.Getenv("TY_FRP_SERVER_AUTH_TOKEN_FILE"), cacheFile: os.Getenv("TY_FRP_ROSTER_CACHE"), portStart: 22000, portEnd: 22999}
 	if v := os.Getenv("TY_FRP_AUTH_LISTEN"); v != "" {
 		cfg.listen = v
 	}
@@ -101,13 +108,32 @@ func settingsFromEnv() (settings, error) {
 		cfg.cacheFile = "/var/lib/ty-frp-auth/roster.json"
 	}
 	u, err := url.Parse(cfg.rosterURL)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" || u.RawQuery != "" || u.Path != "/api/v1/frp/roster" || cfg.tokenFile == "" || cfg.portStart < 1 || cfg.portStart > cfg.portEnd || cfg.portEnd > 65535 {
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" || u.RawQuery != "" || u.Path != "/api/v1/frp/roster" || cfg.tokenFile == "" || cfg.serverTokenFile == "" || cfg.portStart != 22000 || cfg.portEnd != 22999 {
 		return cfg, errors.New("invalid FRP authorization settings")
 	}
 	if !strings.HasPrefix(cfg.listen, "127.0.0.1:") {
 		return cfg, errors.New("FRP authorization plugin must listen on 127.0.0.1")
 	}
 	return cfg, nil
+}
+
+func loadServerAuthToken(path string) (string, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() || runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0 {
+		return "", errors.New("FRPS server auth token file permissions are too broad")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	token := strings.TrimSpace(string(data))
+	if len(token) < 32 {
+		return "", errors.New("FRPS server auth token is too short")
+	}
+	return token, nil
 }
 
 func fetchRoster(ctx context.Context, client *http.Client, endpoint, tokenFile string) (frpauth.Roster, error) {

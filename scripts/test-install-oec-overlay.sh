@@ -15,6 +15,18 @@ esac
 trap 'rm -rf -- "$test_base"' EXIT
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
+test_scope="${TY_OVERLAY_TEST_SCOPE:-all}"
+case "$test_scope" in
+  all|install-idempotency|interrupted-repair) ;;
+  *) fail "unknown test scope: $test_scope" ;;
+esac
+finish_test_scope() {
+  local completed_scope="$1"
+  [[ "$test_scope" != "$completed_scope" ]] || {
+    echo "OEC overlay $completed_scope tests passed."
+    exit 0
+  }
+}
 assert_eq() { [[ "$1" == "$2" ]] || fail "$3 (expected '$2', got '$1')"; }
 assert_file_eq() {
   local file="$1" expected="$2" actual
@@ -200,6 +212,7 @@ run_installer >/dev/null
 assert_eq "$(state_of ty-frpc-rescue.service)" "loaded disabled inactive" "repeat install FRPC state"
 assert_eq "$(state_of ty-gateway-local.service)" "loaded enabled active" "repeat install local manager state"
 assert_no_frpc_mutation
+finish_test_scope install-idempotency
 
 # An interrupted first install can have unit files but no enable/start action.
 # Bootstrap explicitly requests reconciliation; ordinary upgrades do not.
@@ -218,6 +231,7 @@ run_installer_repair >/dev/null
 if grep -E '^restart .*ty-gateway-(firstboot|agent|local|network|dae-helper|update-service)\.service' "$install_root/.systemctl.log" >/dev/null; then
   fail "repair restarted a service that was already running"
 fi
+finish_test_scope interrupted-repair
 
 # A successful update retains a private snapshot. Restoring it only reverts
 # package software and service states; device configuration and rescue access

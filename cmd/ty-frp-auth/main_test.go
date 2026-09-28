@@ -57,12 +57,59 @@ func TestFetchAndCacheRoster(t *testing.T) {
 func TestSettingsRejectsNonHTTPSRosterAndPublicListen(t *testing.T) {
 	t.Setenv("TY_FRP_ROSTER_URL", "http://example.invalid/api/v1/frp/roster")
 	t.Setenv("TY_FRP_ROSTER_TOKEN_FILE", "token")
+	t.Setenv("TY_FRP_SERVER_AUTH_TOKEN_FILE", "server-token")
 	if _, err := settingsFromEnv(); err == nil {
 		t.Fatal("HTTP roster URL accepted")
 	}
 	t.Setenv("TY_FRP_ROSTER_URL", "https://example.invalid/api/v1/frp/roster")
+	t.Setenv("TY_FRP_SERVER_AUTH_TOKEN_FILE", "server-token")
 	t.Setenv("TY_FRP_AUTH_LISTEN", "0.0.0.0:9081")
 	if _, err := settingsFromEnv(); err == nil {
 		t.Fatal("public plugin listener accepted")
+	}
+}
+
+func TestSettingsUseUnifiedRangeAndRejectPartialPool(t *testing.T) {
+	t.Setenv("TY_FRP_ROSTER_URL", "https://cloud.example.test/api/v1/frp/roster")
+	t.Setenv("TY_FRP_ROSTER_TOKEN_FILE", "/tmp/roster-token")
+	t.Setenv("TY_FRP_SERVER_AUTH_TOKEN_FILE", "/etc/frp/server-auth-token")
+	t.Setenv("TY_FRP_AUTH_LISTEN", "127.0.0.1:9081")
+	t.Setenv("TY_FRP_PORT_START", "")
+	t.Setenv("TY_FRP_PORT_END", "")
+	cfg, err := settingsFromEnv()
+	if err != nil || cfg.portStart != 22000 || cfg.portEnd != 22999 {
+		t.Fatalf("plugin and Cloud auto-FRP defaults disagree: %#v, %v", cfg, err)
+	}
+	t.Setenv("TY_FRP_PORT_START", "22100")
+	t.Setenv("TY_FRP_PORT_END", "22999")
+	if _, err := settingsFromEnv(); err == nil {
+		t.Fatal("plugin accepted a partial port pool")
+	}
+}
+
+func TestLoadServerAuthTokenRequiresPrivateStrongSecret(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "frps-token")
+	const token = "server-only-test-token-0123456789abcdef"
+	if err := os.WriteFile(path, []byte(token), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadServerAuthToken(path)
+	if err != nil || got != token {
+		t.Fatalf("load private server token: got=%q err=%v", got, err)
+	}
+	if err := os.WriteFile(path, []byte("short"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadServerAuthToken(path); err == nil {
+		t.Fatal("short server auth token accepted")
+	}
+	if runtime.GOOS != "windows" {
+		if err := os.WriteFile(path, []byte(token), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := loadServerAuthToken(path); err == nil {
+			t.Fatal("publicly readable server auth token accepted")
+		}
 	}
 }

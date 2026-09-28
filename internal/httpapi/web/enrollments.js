@@ -30,7 +30,7 @@
         <div class="panel-body"><p>1. 在后台登记设备有线网卡 MAC、备注和需要绑定的策略。</p>
           <p>2. 在设备上运行通用安装包；Agent 首次联网时会先在本机安全保存随机身份密钥，再向云端认领。</p>
           <p>3. 云端只接受已预登记且尚未认领的 MAC，并把该 MAC 原子绑定到首次成功的设备身份；成功后自动下发该设备的策略和订阅。</p>
-          <p class="muted">MAC 不是密码，首次认领存在 MAC 仿冒/抢先认领风险；后台应只登记已售出设备的 MAC。自动 FRP 只会连接独立 per-device 监听，不会接触现有 7001/22000 救援通道。DHCP、DNS 和 DAE 代理开关仍按设备当前配置执行，不会因注册而自动打开。</p>
+          <p class="muted">MAC 不是密码，首次认领存在 MAC 仿冒/抢先认领风险；后台应只登记已售出设备的 MAC。自动 FRP 经 7001 控制端口连接，SSH 映射凭 per-device roster 单独授权；22000–22999 为设备映射端口。DHCP、DNS 和 DAE 代理开关仍按设备当前配置执行，不会因注册而自动打开。</p>
         </div></section>
     </div>
     <section class="panel" style="margin-top:18px"><div class="panel-head"><div><h2>预登记列表</h2><p>过期或未使用的记录可撤销后重新生成。</p></div></div>

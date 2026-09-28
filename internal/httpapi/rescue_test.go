@@ -105,6 +105,21 @@ func TestCustomerCannotReadAdminRescueOverview(t *testing.T) {
 	}
 }
 
+func TestAdminRescuePageDistinguishesReservedLegacyPortFromAutomaticTunnel(t *testing.T) {
+	srv := NewServer(store.NewMemoryStore(), "admin-test", []byte("0123456789abcdef0123456789abcdef"))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("admin page status = %d", w.Code)
+	}
+	page := w.Body.String()
+	for _, marker := range []string{"自动通道未启用", "旧式手工通道 · 仅登记端口", "登记端口不会启动 FRPC"} {
+		if !strings.Contains(page, marker) {
+			t.Fatalf("admin page hides legacy FRP limitation: missing %q", marker)
+		}
+	}
+}
+
 func TestAdminRescueProbeChecksForSSHBanner(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -209,6 +224,51 @@ func TestRescuePortAssignmentRequiresExplicitPort(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("missing rescue port status = %d", w.Code)
+	}
+}
+
+func TestRetiredLegacyPortCanBeClearedWithoutAnActiveRoute(t *testing.T) {
+	ctx := context.Background()
+	st := store.NewMemoryStore()
+	old, _, err := st.RegisterDevice(ctx, model.RegisterDeviceInput{MAC: "02:00:00:00:00:31"})
+	if err != nil || st.SetRescueSSHPort(ctx, old.ID, 22000) != nil {
+		t.Fatal("old port setup failed")
+	}
+	srv := NewServer(st, "admin-test", []byte("0123456789abcdef0123456789abcdef"))
+	srv.LegacyFRPRetired = true
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/devices/rescue-port", strings.NewReader(`{"device_id":"`+old.ID+`","port":0}`))
+	req.Header.Set("X-TY-Admin-Token", "admin-test")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("retired port could not be cleared: %d %s", w.Code, w.Body.String())
+	}
+	if got, err := st.GetDevice(ctx, old.ID); err != nil || got.RescueSSHPort != 0 {
+		t.Fatalf("retired port still reserved: %#v, %v", got, err)
+	}
+}
+
+func TestRetiredRescueOverviewUsesAutomaticEndpoint(t *testing.T) {
+	ctx := context.Background()
+	st := store.NewMemoryStore()
+	if _, err := st.PrepareMACDeviceEnrollment(ctx, "02:00:00:00:00:32", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	d, _, err := st.RegisterMACClaim(ctx, model.RegisterDeviceInput{MAC: "02:00:00:00:00:32", DeviceSecret: strings.Repeat("e", 64)})
+	if err != nil || st.SetRescueSSHPort(ctx, d.ID, 22000) != nil {
+		t.Fatal("automatic port setup failed")
+	}
+	srv := NewServer(st, "admin-test", []byte("0123456789abcdef0123456789abcdef"))
+	srv.LegacyFRPRetired = true
+	srv.AutoFRP = &model.AutoFRPConfig{Host: "new-frps.example.test", ControlPort: 7001, TLSCA: "public-ca"}
+	srv.AutoFRPPortStart, srv.AutoFRPPortEnd = 22000, 22999
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/rescue", nil)
+	req.Header.Set("X-TY-Admin-Token", "admin-test")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var got rescueOverview
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.Host != "new-frps.example.test" || got.ControlPort != 7001 || got.RemotePortStart != 22000 || got.RemotePortEnd != 22999 || len(got.Devices) != 1 || got.Devices[0].FRPMode != "per-device" {
+		t.Fatalf("retired overview advertised wrong endpoint: %d %s", w.Code, w.Body.String())
 	}
 }
 
