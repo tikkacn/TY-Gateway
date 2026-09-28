@@ -14,7 +14,7 @@ import (
 	"tygateway/internal/selection"
 )
 
-// An applied snapshot is the single atomic, root-only local source of truth
+// An applied snapshot is the single atomic, Agent-private local source of truth
 // for rules, selectable nodes, and the policy that the Agent can reapply.
 // It never contains the provider URL, proxy endpoint, or proxy credentials.
 type appliedSnapshot struct {

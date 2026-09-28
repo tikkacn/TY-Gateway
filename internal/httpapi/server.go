@@ -8,6 +8,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"embed"
 	"encoding/base64"
 	"encoding/hex"
@@ -27,6 +28,8 @@ import (
 
 	"tygateway/internal/auth"
 	"tygateway/internal/customer"
+	"tygateway/internal/frpauth"
+	"tygateway/internal/frpoidc"
 	"tygateway/internal/identity"
 	"tygateway/internal/model"
 	"tygateway/internal/providers"
@@ -53,6 +56,7 @@ type Server struct {
 	Rescue             *model.RescueConfig
 	LegacyFRPRetired   bool
 	AutoFRP            *model.AutoFRPConfig
+	FRPOIDC            *frpoidc.Provider
 	AutoFRPPortStart   int
 	AutoFRPPortEnd     int
 	FRPS               FRPSAdminConfig
@@ -71,6 +75,8 @@ type Server struct {
 	customerLoginLimit windowLimit
 	customerLimits     keyedLimit
 	recoveryLimits     keyedLimit
+	frpOIDCLimits      keyedLimit
+	frpOIDCGlobal      windowLimit
 }
 
 // FRPSAdminConfig contains public rescue endpoint metadata only. It must never
@@ -220,6 +226,22 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		return
 	case path == "/frp/roster" && r.Method == http.MethodGet:
 		s.frpRoster(w, r)
+		return
+	case strings.HasPrefix(path, "/frp/oidc/"):
+		if s.FRPOIDC == nil {
+			http.NotFound(w, r)
+			return
+		}
+		if strings.HasSuffix(path, "/token") && (!s.frpOIDCLimits.allow("peer:"+loginPeer(r), 60) || !s.frpOIDCGlobal.allow(300)) {
+			w.Header().Set("Retry-After", "60")
+			writeError(w, http.StatusTooManyRequests, "FRP token rate exceeded")
+			return
+		}
+		proxyRequest := r.Clone(r.Context())
+		proxyURL := *r.URL
+		proxyURL.Path = strings.TrimPrefix(path, "/frp/oidc")
+		proxyRequest.URL = &proxyURL
+		s.FRPOIDC.ServeHTTP(w, proxyRequest)
 		return
 	case path == "/customer/login" && r.Method == http.MethodPost:
 		if !s.customerLoginLimit.allow(300) {
@@ -432,6 +454,34 @@ func (s *Server) autoFRPConfigForDevice(d model.Device) *model.AutoFRPConfig {
 	config := *s.AutoFRP
 	config.RemotePort = d.RescueSSHPort
 	return &config
+}
+
+func (s *Server) VerifyFRPOIDCClient(ctx context.Context, deviceID, clientSecret string) (string, error) {
+	if s.AutoFRP == nil || deviceID == "" || len(clientSecret) != 64 || s.AutoFRPPortStart < 22000 || s.AutoFRPPortEnd > 22999 {
+		return "", errors.New("FRP client is not authorized")
+	}
+	d, err := s.Store.GetDevice(ctx, deviceID)
+	if err != nil || d.State != model.DeviceEnabled || d.RescueSSHPort < s.AutoFRPPortStart || d.RescueSSHPort > s.AutoFRPPortEnd {
+		return "", errors.New("FRP client is not authorized")
+	}
+	a, err := s.Store.GetDeviceAuth(ctx, deviceID)
+	if err != nil || a.State != model.DeviceEnabled {
+		return "", errors.New("FRP client is not authorized")
+	}
+	expected, err := frpauth.Credential(a.SecretHash, deviceID, d.RescueSSHPort)
+	if err != nil || subtle.ConstantTimeCompare([]byte(expected), []byte(clientSecret)) != 1 {
+		return "", errors.New("FRP client is not authorized")
+	}
+	enrollments, err := s.Store.ListDeviceEnrollments(ctx)
+	if err != nil {
+		return "", errors.New("FRP client is not authorized")
+	}
+	for _, enrollment := range enrollments {
+		if enrollment.DeviceID == deviceID && enrollment.ClaimedAt != nil && enrollment.ClaimMode == "mac" {
+			return deviceID, nil
+		}
+	}
+	return "", errors.New("FRP client is not authorized")
 }
 
 func (s *Server) rescueRouteForDevice(ctx context.Context, deviceID string) (host string, controlPort, portStart, portEnd int, mode string, err error) {

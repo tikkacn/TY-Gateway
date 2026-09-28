@@ -1,30 +1,26 @@
-# OEC2 local FRP authorization integration test
+# OEC2 FRP authorization test
 
-This test kit runs the FRP 0.71.0 client and server only on OEC2 loopback. It does not contact or modify the production FRPS listener, Cloud API, or systemd services. The Go test starts temporary FRPS/FRPC processes and binds randomly selected localhost ports, then checks plugin-required login rejection, roster authorization, proxy creation, and an SSH banner forwarding through the tunnel.
+## What the local integration test proves
 
-## Build the test kit on Windows
+The Go integration test launches official FRP 0.71.0 `frps` and `frpc` only on loopback. It exercises the native OIDC client-credentials exchange, confirms an invalid device credential is rejected, confirms the authorization plugin rejects a mismatched rescue key/port, and verifies an authorized client forwards an SSH greeting through its assigned port. It does not connect to or alter the public FRPS listener.
 
-From the repository root, with the local Go toolchain prepared:
+The test has passed on the Linux FRPS host with the official FRP 0.71.0 binaries. The ARM64 test kit can also be built locally from the verified upstream archive:
 
 ```powershell
 .\scripts\build-frp-auth-oec2-test.ps1
 ```
 
-The script downloads the official FRP `v0.71.0` Linux ARM64 release and validates its SHA-256 before extracting `frps` and `frpc`. It cross-compiles the Go integration test for Linux ARM64. The output directory is `work/frp-auth-oec2-test-v0.71.0`; it is ignored by Git and contains no credentials. Transfer only `ty-frp-auth-oec2-test-v0.71.0.zip` from that directory; the source archive and extraction staging are not needed on the device.
+On OEC2, run the test command shown in the generated `work/frp-auth-oec2-test-v0.71.0/README.md`. Test-only OIDC keys, tokens, ports, and credentials are generated locally and must not be reused in production.
 
-## Run on OEC2
+## Current server-side pilot state (2026-09-29)
 
-Copy the ZIP to OEC2 over SSH/SCP, then extract it and enter the extracted directory. Run:
+- Cloud OIDC discovery and JWKS are publicly reachable over HTTPS. Invalid clients receive HTTP 401. The signing private key stays on the Cloud host.
+- FRPS 0.71.0 on TCP 7001 validates OIDC tokens and loads the per-device authorization plugin. The allowed mapping pool is 22000–22999; the plugin listens only on loopback.
+- The plugin fetches a fresh Cloud roster. OEC2 device #105 currently has the first free mapping, TCP 22000, and appears in the roster.
+- The original FRPS config, Cloud binary/environment, and previous plugin binary are backed up on their respective servers.
 
-```sh
-sha256sum -c SHA256SUMS
-cd payload
-chmod 755 frps frpc frpauth.test
-TY_FRP_TEST_FRPS="$PWD/frps" \
-TY_FRP_TEST_FRPC="$PWD/frpc" \
-./frpauth.test -test.run '^TestFRP071RealSSHForwarding$' -test.v
-```
+## What still requires the OEC2 device
 
-Success requires `PASS` for `TestFRP071RealSSHForwarding`. A skip means the FRPS/FRPC paths were not passed. A failure is useful evidence and should be returned in full. The test's test-only tokens and generated credentials are ephemeral; do not reuse them in production.
+No production OEC2 FRPC connection has authenticated yet. The FRPS listener, OIDC endpoint, and roster health do not prove that OEC2 obtained the new OIDC metadata, started FRPC, or exposed SSH. After installing the signed GitHub pilot on the existing registered OEC2, verify the Agent log, FRPC process, FRPS connection, and the administrator-side SSH probe. Do not report an FRP tunnel as working until the SSH banner is reachable through TCP 22000.
 
-The test uses no public listening address and does not verify OEC-to-production FRP connectivity. Production activation still requires a separate server-side migration and an end-to-end SSH test through the assigned `22000–22999` mapping.
+Device #105's MAC has already been claimed. A future full reflash that deletes `/var/lib/ty-gateway/credentials.json` will generate a new device secret and cannot reclaim that already-claimed MAC automatically. Preserve the current credentials for this pilot. A destructive re-enrollment needs a deliberate administrator-side identity re-arm first; MAC alone is not sufficient authority to take over an existing device.

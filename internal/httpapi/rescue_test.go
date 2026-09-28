@@ -260,7 +260,7 @@ func TestRetiredRescueOverviewUsesAutomaticEndpoint(t *testing.T) {
 	}
 	srv := NewServer(st, "admin-test", []byte("0123456789abcdef0123456789abcdef"))
 	srv.LegacyFRPRetired = true
-	srv.AutoFRP = &model.AutoFRPConfig{Host: "new-frps.example.test", ControlPort: 7001, TLSCA: "public-ca"}
+	srv.AutoFRP = testOIDCAutoFRP("new-frps.example.test")
 	srv.AutoFRPPortStart, srv.AutoFRPPortEnd = 22000, 22999
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/rescue", nil)
 	req.Header.Set("X-TY-Admin-Token", "admin-test")
@@ -269,6 +269,9 @@ func TestRetiredRescueOverviewUsesAutomaticEndpoint(t *testing.T) {
 	var got rescueOverview
 	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.Host != "new-frps.example.test" || got.ControlPort != 7001 || got.RemotePortStart != 22000 || got.RemotePortEnd != 22999 || len(got.Devices) != 1 || got.Devices[0].FRPMode != "per-device" {
 		t.Fatalf("retired overview advertised wrong endpoint: %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "oidc_client_secret") || strings.Contains(w.Body.String(), "client_secret") {
+		t.Fatal("administrator rescue overview exposed FRP OIDC credentials")
 	}
 }
 

@@ -1,6 +1,6 @@
 # OEC 一键安装 Pilot：分阶段开发与验收
 
-状态：2026-09-28。范围是验证“预登记 MAC 的 Armbian 设备联网后，一键安装、自动注册、收到策略、建立 FRP，并能按开关实际启停 DAE”的真实闭环。本文是本地开发验收记录，不代表新版本已签名、发布或部署。
+状态：2026-09-29。范围是验证“预登记 MAC 的 Armbian 设备联网后，一键安装、自动注册、收到策略、建立 FRP，并能按开关实际启停 DAE”的真实闭环。Cloud/FRPS 服务端本轮已部署 OIDC；`v0.8.4` ARM64 overlay 已构建、审查并由远端受信任密钥签名，本机验签通过。下一步发布 GitHub-only pilot 并进行 OEC2 真机验收；尚未开始。
 
 ## 执行原则
 
@@ -15,11 +15,11 @@
 
 | 阶段 | 本阶段证明什么 | 通过条件与证据 | 状态 |
 | --- | --- | --- | --- |
-| 0. 候选包与发布链 | 安装器、Agent、DAE helper、Cloud schema 和签名包来自同一个源码版本；Pilot 不含 R2 fallback | 固定的 ARM64 包、版本清单、签名与 SHA-256 全部一致；安装脚本只含 GitHub TY Gateway 下载 URL，DAE 官方包版本/哈希固定；秘密扫描通过；不发布、不推 R2 | 进行中：源码尚未冻结/签名 |
+| 0. 候选包与发布链 | 安装器、Agent、DAE helper、Cloud schema 和签名包来自同一个源码版本；Pilot 不含 R2 fallback | 固定的 ARM64 包、版本清单、签名与 SHA-256 全部一致；安装脚本只含 GitHub TY Gateway 下载 URL，DAE 官方包版本/哈希固定；秘密扫描通过；不推 R2 | `v0.8.4` overlay 固定，签名与 SHA-256 经固定公钥验证通过；GitHub-only pilot 发布处理中，不触及 R2 |
 | 1. 一键首装与续装 | 支持的 Armbian 上依赖安装、身份初始化和 systemd 服务可靠且幂等 | 预检识别 ARM64、Debian/Ubuntu、systemd、NetworkManager、IPv4 默认路由、DAE 内核/BTF/BPFFS 条件；安装/重跑不重复创建用户、覆盖凭据或接管 DHCP；核心管理服务启用并运行；首装中断后重跑能补齐 | 未完成真机验收；`v0.8.2` 实测失败过 |
-| 2. MAC 与自动注册 | 设备实际 MAC 正确进入设备码与云端设备身份，不依赖镜像残留或手工修复 | 安装前 `eth0`/默认出口接口 MAC 与后台预登记一致；本地设备码、注册 MAC、云端设备详情一致；凭据落盘且权限正确；Agent 重启/整机重启不产生重复设备；错误/陈旧 pending identity 有可恢复提示 | 部分通过（手工纠正 MAC 并移走旧 pending 后注册成功）；新鲜一键流程未证明 |
+| 2. MAC 与自动注册 | 设备实际 MAC 正确进入设备码与云端设备身份，不依赖镜像残留或手工修复 | 安装前 `eth0`/默认出口接口 MAC 与后台预登记一致；本地设备码、注册 MAC、云端设备详情一致；凭据落盘且权限正确；Agent 重启/整机重启不产生重复设备；错误/陈旧 pending identity 有可恢复提示 | 首次自动认领已成功；重刷丢失凭据后的恢复不允许仅凭已认领 MAC 自动接管，需保留凭据或管理员明确重置认领 |
 | 3. 订阅、规则与节点 | 云端策略可以稳定下发，DAE 实际解析节点成为可选节点，失败保留最后有效版本 | 分开验“未绑定订阅”与“已绑定有效订阅”；都能生成合法且含 `global {}` 的 DAE 配置；订阅节点清单、DAE 解析节点、过滤 `IPV6` 名称后的本地节点和云端回报一致；规则包版本匹配 Agent；重载失败不替换上一份有效配置；云端更新失败显示真实错误而非假成功。首次绑定订阅时，为取得 DAE 原生节点清单可能会临时启动 DAE 探测；代理开关仍须保持关，探测失败必须明确报错、不可伪称应用成功 | 未通过：现场曾见 node-inventory HTTP 400、DAE 校验/服务未运行；源码修正尚未部署核验 |
-| 4. 自动 FRP | MAC 认领后无需手工 SSH/FRP 配置即可建成每设备隧道 | FRPC `serverPort` 与 FRPS `bindPort` 使用同一控制端口 7001；FRPS 必须用仅服务端持有的非空 Token，并在同一监听加载 `ty-frp-auth` 的全部授权操作，使插件漏配时原生 FRP Token 校验也拒绝 OEC 客户端；SSH 映射端口使用 22000–22999；Cloud 返回设备专属 host/端口/授权；设备 Agent 实际启动 FRPC；设备重启后自动重连；管理员端从公网执行 SSH 握手成功。源码在 DAE 应用前先协调 FRP，故应分别核对 Cloud 是否下发 `auto_frp`、客户端进程、FRPS roster 命中和公网 SSH。端口登记/页面显示不算通过 | 未通过：FRPS/Cloud 新路径尚待部署核实；真实 FRPS↔FRPC 隧道未测。OEC2 的 22001 只是登记，不是连通证明。FRP v0.71.0 官方规则已促使修正代理名：全局 `user` 会自动作为代理名前缀，Agent 只生成 `ssh-rescue`，由 FRP 形成 `<device-id>.ssh-rescue`；本地插件现把设备级授权后的 Login 改写为服务器私有 Token 签名，并加入“漏挂插件则登录失败”的集成用例，但该真实 FRP 集成尚未运行。服务端部署要求见 [FRP-AUTH-DEPLOYMENT.md](FRP-AUTH-DEPLOYMENT.md) |
+| 4. 自动 FRP | MAC 认领后无需手工 SSH/FRP 配置即可建成每设备隧道 | FRPC `serverPort` 与 FRPS `bindPort` 同为 7001；FRP 原生 OIDC 设备级凭据 + roster 插件；仅允许该设备 SSH 映射端口；Agent 启动 FRPC；重启自动恢复；公网 SSH 握手成功 | Cloud OIDC、FRPS 0.71.0 真实配置校验、插件注册、HTTPS JWKS、无效客户端 HTTP 401、loopback 真 FRP 集成均已通过。OEC2 端口 22000 已分配且在 roster 中；仍待设备 FRPC 登录与公网 SSH 握手 |
 | 5. DAE 开关与真实转发 | 代理开关对应真实路径，开关状态可跨重启保存，IPv4/IPv6 不意外绕过 | `dae validate` 成功；DAE 实际服务运行；首次默认为关；界面关闭后流量直连且重启仍关闭；开启后通过选中的 DAE 节点/规则出站，重启仍开启；用局域网客户端验证国内直连、代理规则命中、失败节点/兜底和 IPv6 无旁路；记录出口 IP/DAE 状态。转发相关 sysctl 与 NetworkManager 配置在 reboot、接口重连后仍符合设计 | 未通过：曾手工加 `global {}` 并临时 `sysctl` 后服务才 active；重启持久性和真实客户端流量未验证 |
 | 6. 故障与重启恢复 | 网络波动、云端暂时不可用、订阅失败或服务崩溃不会造成失控/失联 | 设备联网延迟后自动重试注册/配置/FRP；云端断开时使用最后有效策略并明确标记离线；订阅/规则更新校验失败回滚；Agent、DAE、FRP 服务重启后恢复；反复运行同一 bootstrap 不创建重复内容；管理救援路径始终可达 | 未完成；与阶段 1–5 同一轮实机顺带验证 |
 | 7. 更新、备份与恢复 | 后续迭代安全且用户数据/管理员控制边界正确 | GitHub 在线升级与本地包上传均验签；升级失败自动回退；管理员可远端升级/回退；用户仅升级；配置导出/导入可恢复用户配置但不覆盖注册身份、FRP 凭据或强制管理配置；恢复出厂后仍能依云端管理规则重新同步 | 本次核心一键安装闭环之后的下一里程碑；不可宣称已验收 |
@@ -29,14 +29,15 @@
 - 当前 MAC 已由用户通过设备工具改为 `30:A6:12:09:E4:31`，接口显示 `eth0`，Agent API 显示设备码 `30A61209E431`。此前设备树/Armbian 残留了 `D6:51:EB:55:BD:27`，待注册文件仍带旧 MAC，导致 enrollment identity mismatch。手工移开旧 pending 文件后，后台自动注册成功；因此“MAC 获取、陈旧身份恢复”还没有由新 bootstrap 自动证明。
 - 自动注册后 Agent 曾报告配置应用成功，但 node inventory 曾返回 HTTP 400；DAE 初始配置也曾因缺少 `global` 段校验失败。用户补入空 `global {}` 并手动启动 DAE 后，Agent 才记录 applied。分支现有改动不能算设备端已修复，必须用新候选版本重验。
 - DAE 启动又因转发 sysctl 条件失败；用户手工设 IPv4 forwarding=1、关闭 IPv4 redirects 后服务变成 active。这只是当前状态证据，不证明 NetworkManager/重启后持久，也不证明流量实际经 DAE。
-- `pgrep -a frpc` 与 Agent 日志当时没有 FRP 输出。管理后台 22001 端口登记、FRPS 地址显示、配置下发成功都不能替代公网 SSH 握手。
+- 当前 Cloud 确认 #105/#TY002 为 enabled、MAC 已认领但离线，`rescue_ssh_port` 原为空；因此先前没有 `auto_frp` 配置，FRP roster 为 0。现在已分配最先空闲端口 22000，FRP roster 为 1，FRPS 7001 OIDC 监听与本机插件均 active。设备仍未登录，不能据此宣布隧道成功。
+- 此 MAC 的首领认已被消耗。Agent 首领认时生成的随机密钥保存在 `/var/lib/ty-gateway/credentials.json`；完全重刷删除它后，Cloud 会拒绝仅凭 MAC 生成新身份。当前 OEC2 测试应保留该文件。重刷验证首领认之前需要管理员操作重新武装，不得偷偷删除/复位设备身份。
 
 ## 必须先补齐的阻塞项
 
 1. 本地已覆盖 MAC allowlist 自动认领、旧 pending MAC 不匹配保护、node-inventory 请求 schema，以及 Agent 对真实 Cloud HTTP API 的认领闭环。新增集成用例模拟“Cloud 已提交认领但响应丢失”，重跑后使用同一身份、仅保留一台设备、凭据落盘，并以 Agent 签名请求取回 7001 控制端口和 22000 首个映射端口的 FRP 配置；Agent 随后生成 FRPC 配置并启动本地进程替身。该替身不会连接真正的 FRPS，因此不算真实隧道通过。Agent 对 Cloud 未下发 `auto_frp` 的情况现在会明确记录一次“等待设备授权”状态；配置校验错误日志不打印可能带凭据的 FRP 解析输出。FRP v0.71.0 官方客户端配置说明确认全局 `user` 会拼到代理名前；已修正 Agent 避免重复设备名前缀，并添加重复前缀拒绝回归测试。客户端日志也明确区分“FRPC 进程启动”和“隧道已实际连通”，不再把前者误报为链路已验证。FRP Agent 单测还覆盖配置渲染、首次启动、同配置幂等、撤销清理、FRPC 立即退出失败，以及配置替换失败后恢复旧配置/CA 并重启旧进程；与 DAE 故障并行场景仍待覆盖。真实 FRPS↔FRPC 隧道和官方配置解析未验证：本机 Windows Defender 拦截官方 Windows `frps.exe`，没有绕过防护；应在 Linux/OEC2 候选阶段验收。
-2. 确认实际 Cloud 生产服务是否运行包含新 API 与 `TY_FRP_AUTO_ENABLED=1` 的候选版本；确认 Cloud 数据库迁移、FRP roster token/CA 与 FRPS 插件接口一致。Cloud 服务和 FRPS 不能只靠设备安装包自动变出来。
-3. 在现有 FRPS 控制监听 7001 上部署 per-device 插件/roster 与 TLS，并配置仅服务端持有的强 Token；开启全部授权 hook、限制映射池为 22000–22999。先确认旧共享认证客户端已迁走，再替换监听配置并验证“插件漏配会拒绝、授权设备可连”后，才允许 OEC2 获取自动 FRP 配置。生产服务器还需一次管理员侧部署/验证；设备后续可完全自动连入，不代表服务器无需先配置。
-4. 打包并审查同版本 Agent、local UI、DAE helper、FRPC、release-fetch 和 bootstrap。Pilot 生成器默认无 R2 URL；目前已有 Release 不会被修改。
+2. 已确认 Cloud 生产服务含 OIDC issuer 与设备级凭据校验，FRPS 插件 roster API 使用独立机器 token、TLS CA 与当前 HTTPS 端点一致。
+3. 已切换 FRPS 7001 到原生 OIDC + 全授权 hook，允许端口 22000–22999。切换前无已建立连接，旧 FRPS 配置与旧服务二进制有回滚副本。loopback 集成和服务端配置验证通过；实机 FRPC/SSH 仍未通过。
+4. 已构建同版本 ARM64 Agent、local UI、DAE helper、FRPC、release-fetch 和 overlay archive；结构审查、受信任签名与固定公钥验签均通过。当前准备发布 GitHub-only pilot 供 OEC2 首轮一键安装；保留阶段包，只有用户明确要求才删除。
 
 ## 本地验证记录
 

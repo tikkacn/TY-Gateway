@@ -22,6 +22,13 @@ import (
 	"tygateway/internal/model"
 )
 
+const testFRPOIDCIssuer = "https://oec.example.test/api/v1/frp/oidc"
+const testFRPOIDCAudience = "ty-gateway-frp"
+
+func testAutoFRPConfig(host string, port int, ca string) *model.AutoFRPConfig {
+	return &model.AutoFRPConfig{Host: host, ControlPort: 7001, RemotePort: port, OIDCIssuer: testFRPOIDCIssuer, OIDCAudience: testFRPOIDCAudience, OIDCTokenEndpoint: testFRPOIDCIssuer + "/token", TLSCA: ca}
+}
+
 // The test binary doubles as a tiny frpc stand-in when launched by the manager.
 // It never opens a listener or connects to a network endpoint.
 func init() {
@@ -59,7 +66,7 @@ func init() {
 
 func TestRenderAutoFRPConfigUsesDeviceScopedCredentialAndSeparatePort(t *testing.T) {
 	state := credentialState{DeviceID: "device-abcd", DeviceSecret: strings.Repeat("a", 64)}
-	config := &model.AutoFRPConfig{Host: "frp.example.test", ControlPort: 7001, RemotePort: 22017}
+	config := testAutoFRPConfig("frp.example.test", 22017, "")
 	text, gotCredential, err := renderAutoFRPConfig(state, config, "/var/lib/ty-gateway/frp-auto-ca.pem")
 	if err != nil {
 		t.Fatal(err)
@@ -70,6 +77,11 @@ func TestRenderAutoFRPConfigUsesDeviceScopedCredentialAndSeparatePort(t *testing
 	}
 	for _, expected := range []string{
 		"serverPort = 7001",
+		"auth.method = \"oidc\"",
+		"auth.oidc.clientID = \"device-abcd\"",
+		"auth.oidc.clientSecret = \"" + wantCredential + "\"",
+		"auth.oidc.audience = \"" + testFRPOIDCAudience + "\"",
+		"auth.oidc.tokenEndpointURL = \"" + testFRPOIDCIssuer + "/token\"",
 		"remotePort = 22017",
 		"transport.tls.trustedCaFile",
 		"metadatas.device_id = \"device-abcd\"",
@@ -84,7 +96,7 @@ func TestRenderAutoFRPConfigUsesDeviceScopedCredentialAndSeparatePort(t *testing
 		t.Fatal("proxy name must not include the device ID because FRP adds the global user prefix")
 	}
 	if strings.Contains(text, "auth.token") {
-		t.Fatal("generated FRPC config embeds a shared token")
+		t.Fatal("generated FRPC TOML must use per-device OIDC, not a shared FRP token")
 	}
 	config.RemotePort = 22000
 	if text, _, err := renderAutoFRPConfig(state, config, "/var/lib/ty-gateway/frp-auto-ca.pem"); err != nil || !strings.Contains(text, "remotePort = 22000") {
@@ -95,11 +107,12 @@ func TestRenderAutoFRPConfigUsesDeviceScopedCredentialAndSeparatePort(t *testing
 func TestRenderAutoFRPConfigRejectsUnsafeOrLegacyInputs(t *testing.T) {
 	state := credentialState{DeviceID: "device-abcd", DeviceSecret: strings.Repeat("a", 64)}
 	for _, config := range []*model.AutoFRPConfig{
-		{Host: "frp.example.test\nloginFailExit = false", ControlPort: 7001, RemotePort: 22017},
-		{Host: "frp.example.test", ControlPort: 7002, RemotePort: 22017},
-		{Host: "frp.example.test", ControlPort: 0, RemotePort: 22000},
-		{Host: "frp.example.test", ControlPort: 7001, RemotePort: 0},
-		{Host: "frp.example.test", ControlPort: 7001, RemotePort: 23000},
+		{Host: "frp.example.test\nloginFailExit = false", ControlPort: 7001, RemotePort: 22017, OIDCIssuer: testFRPOIDCIssuer, OIDCAudience: testFRPOIDCAudience, OIDCTokenEndpoint: testFRPOIDCIssuer + "/token"},
+		{Host: "frp.example.test", ControlPort: 7002, RemotePort: 22017, OIDCIssuer: testFRPOIDCIssuer, OIDCAudience: testFRPOIDCAudience, OIDCTokenEndpoint: testFRPOIDCIssuer + "/token"},
+		{Host: "frp.example.test", ControlPort: 0, RemotePort: 22000, OIDCIssuer: testFRPOIDCIssuer, OIDCAudience: testFRPOIDCAudience, OIDCTokenEndpoint: testFRPOIDCIssuer + "/token"},
+		{Host: "frp.example.test", ControlPort: 7001, RemotePort: 0, OIDCIssuer: testFRPOIDCIssuer, OIDCAudience: testFRPOIDCAudience, OIDCTokenEndpoint: testFRPOIDCIssuer + "/token"},
+		{Host: "frp.example.test", ControlPort: 7001, RemotePort: 23000, OIDCIssuer: testFRPOIDCIssuer, OIDCAudience: testFRPOIDCAudience, OIDCTokenEndpoint: testFRPOIDCIssuer + "/token"},
+		{Host: "frp.example.test", ControlPort: 7001, RemotePort: 22017, OIDCIssuer: "http://oec.example.test/oidc", OIDCAudience: testFRPOIDCAudience, OIDCTokenEndpoint: "https://oec.example.test/token"},
 	} {
 		if _, _, err := renderAutoFRPConfig(state, config, "/tmp/ca.pem"); err == nil {
 			t.Fatalf("unsafe automatic FRP config was accepted: %#v", config)
@@ -111,7 +124,7 @@ func TestAutoFRPManagerApplyReusesAndStopsClient(t *testing.T) {
 	t.Setenv("TY_GATEWAY_TEST_FRPC_HELPER", "1")
 	t.Setenv("TY_GATEWAY_TEST_FRPC_MODE", "run")
 	state := credentialState{DeviceID: "device-test", DeviceSecret: strings.Repeat("a", 64)}
-	config := &model.AutoFRPConfig{Host: "frp.example.test", ControlPort: 7001, RemotePort: 22000, TLSCA: testAutoFRPCA(t)}
+	config := testAutoFRPConfig("frp.example.test", 22000, testAutoFRPCA(t))
 	manager := newAutoFRPManager(filepath.Join(t.TempDir(), "frpc-auto.toml"), os.Args[0])
 
 	if err := manager.Apply(context.Background(), state, config); err != nil {
@@ -144,7 +157,7 @@ func TestAutoFRPManagerRejectsClientThatExitsImmediately(t *testing.T) {
 	t.Setenv("TY_GATEWAY_TEST_FRPC_HELPER", "1")
 	t.Setenv("TY_GATEWAY_TEST_FRPC_MODE", "exit")
 	state := credentialState{DeviceID: "device-test", DeviceSecret: strings.Repeat("b", 64)}
-	config := &model.AutoFRPConfig{Host: "frp.example.test", ControlPort: 7001, RemotePort: 22000, TLSCA: testAutoFRPCA(t)}
+	config := testAutoFRPConfig("frp.example.test", 22000, testAutoFRPCA(t))
 	manager := newAutoFRPManager(filepath.Join(t.TempDir(), "frpc-auto.toml"), os.Args[0])
 
 	if err := manager.Apply(context.Background(), state, config); err == nil {
@@ -167,7 +180,7 @@ func TestAutoFRPCloudOmissionIsVisibleWithoutLoggingConfigurationData(t *testing
 		logger:  log.New(&logs, "", 0),
 	}
 	ctx := context.Background()
-	a.reconcileAutoFRP(ctx, &model.AutoFRPConfig{Host: "frp.example.test", ControlPort: 7001, RemotePort: 22000, TLSCA: "sensitive-config-marker"})
+	a.reconcileAutoFRP(ctx, testAutoFRPConfig("frp.example.test", 22000, "sensitive-config-marker"))
 	a.reconcileAutoFRP(ctx, nil)
 	a.reconcileAutoFRP(ctx, nil)
 
@@ -187,7 +200,7 @@ func TestAutoFRPLogDoesNotClaimTunnelIsVerified(t *testing.T) {
 	manager := newAutoFRPManager(filepath.Join(t.TempDir(), "frpc-auto.toml"), os.Args[0])
 	t.Cleanup(func() { _ = manager.Apply(context.Background(), state, nil) })
 	a := &agent{autoFRP: manager, state: state, logger: log.New(&logs, "", 0)}
-	a.reconcileAutoFRP(context.Background(), &model.AutoFRPConfig{Host: "frp.example.test", ControlPort: 7001, RemotePort: 22000, TLSCA: testAutoFRPCA(t)})
+	a.reconcileAutoFRP(context.Background(), testAutoFRPConfig("frp.example.test", 22000, testAutoFRPCA(t)))
 
 	if got := logs.String(); !strings.Contains(got, "client process started") || !strings.Contains(got, "reachability remains unverified") || strings.Contains(got, "tunnel connected") {
 		t.Fatalf("FRP process startup must not be reported as a verified tunnel: %q", got)
@@ -199,8 +212,8 @@ func TestAutoFRPManagerRestoresWorkingConfigWhenReplacementFails(t *testing.T) {
 	t.Setenv("TY_GATEWAY_TEST_FRPC_MODE", "run")
 	t.Setenv("TY_GATEWAY_TEST_FRPC_FAIL_HOST", "new.example.test")
 	state := credentialState{DeviceID: "device-test", DeviceSecret: strings.Repeat("c", 64)}
-	oldConfig := &model.AutoFRPConfig{Host: "old.example.test", ControlPort: 7001, RemotePort: 22000, TLSCA: testAutoFRPCA(t)}
-	newConfig := &model.AutoFRPConfig{Host: "new.example.test", ControlPort: 7001, RemotePort: 22000, TLSCA: testAutoFRPCA(t)}
+	oldConfig := testAutoFRPConfig("old.example.test", 22000, testAutoFRPCA(t))
+	newConfig := testAutoFRPConfig("new.example.test", 22000, testAutoFRPCA(t))
 	manager := newAutoFRPManager(filepath.Join(t.TempDir(), "frpc-auto.toml"), os.Args[0])
 	t.Cleanup(func() { _ = manager.Apply(context.Background(), state, nil) })
 

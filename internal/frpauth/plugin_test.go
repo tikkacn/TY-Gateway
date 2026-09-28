@@ -11,7 +11,6 @@ import (
 
 func TestCredentialAndPluginAuthorization(t *testing.T) {
 	const id = "device-01"
-	const serverToken = "test-only-frps-server-auth-token-0123456789"
 	credential, err := Credential(strings.Repeat("a", 64), id, 22001)
 	if err != nil || len(credential) != 64 {
 		t.Fatalf("credential: %v", err)
@@ -21,7 +20,7 @@ func TestCredentialAndPluginAuthorization(t *testing.T) {
 		t.Fatal("credential must be port-specific")
 	}
 	roster := Roster{GeneratedAt: time.Now().UTC(), Entries: []Entry{{DeviceID: id, Port: 22001, CredentialHash: CredentialHash(credential)}}}
-	p := NewPlugin(time.Hour, 22001, 22099, serverToken)
+	p := NewPlugin(time.Hour, 22001, 22099)
 	if err := p.SetRoster(roster); err != nil {
 		t.Fatal(err)
 	}
@@ -36,22 +35,19 @@ func TestCredentialAndPluginAuthorization(t *testing.T) {
 		}
 		return w, strings.Contains(w.Body.String(), `"reject":false`)
 	}
-	login := `{"user":"device-01","timestamp":1770000000,"version":"0.71.0","metas":{"device_id":"device-01","rescue_key":"` + credential + `"}}`
+	login := `{"user":"device-01","timestamp":1770000000,"version":"0.71.0","privilege_key":"signed-oidc-jwt","metas":{"device_id":"device-01","rescue_key":"` + credential + `"}}`
 	user := `{"user":{"user":"device-01","metas":{"device_id":"device-01","rescue_key":"` + credential + `"}}}`
 	workConn := `{"user":{"user":"device-01","run_id":"run-01","metas":{"device_id":"device-01","rescue_key":"` + credential + `"}},"run_id":"run-01"}`
 	loginResponse, loginAllowed := request("Login", login)
 	if !loginAllowed {
 		t.Fatal("correct device credential rejected")
 	}
-	var modified struct {
-		Unchange bool `json:"unchange"`
-		Content  struct {
-			PrivilegeKey string `json:"privilege_key"`
-			Version      string `json:"version"`
-		} `json:"content"`
+	var reply struct {
+		Unchange bool            `json:"unchange"`
+		Content  json.RawMessage `json:"content"`
 	}
-	if err := json.Unmarshal(loginResponse.Body.Bytes(), &modified); err != nil || modified.Unchange || modified.Content.PrivilegeKey != FRPAuthKey(serverToken, 1770000000) || modified.Content.Version != "0.71.0" {
-		t.Fatalf("Login was not safely rewritten for native FRPS token auth: response=%s err=%v", loginResponse.Body.String(), err)
+	if err := json.Unmarshal(loginResponse.Body.Bytes(), &reply); err != nil || !reply.Unchange || len(reply.Content) != 0 {
+		t.Fatalf("Login OIDC credential was not passed unchanged to FRPS native verification: response=%s err=%v", loginResponse.Body.String(), err)
 	}
 	if _, ok := request("Login", strings.Replace(login, credential, strings.Repeat("b", 64), 1)); ok {
 		t.Fatal("Login with an invalid per-device credential was accepted")
@@ -96,25 +92,29 @@ func TestCredentialAndPluginAuthorization(t *testing.T) {
 	}
 }
 
-func TestPluginIsNotReadyWithoutServerOnlyToken(t *testing.T) {
-	p := NewPlugin(time.Hour, 22000, 22999, "")
-	if err := p.SetRoster(Roster{GeneratedAt: time.Now().UTC(), Entries: []Entry{{DeviceID: "device-01", Port: 22000, CredentialHash: strings.Repeat("a", 64)}}}); err != nil {
-		t.Fatal(err)
+func TestPluginRequiresFreshRoster(t *testing.T) {
+	p := NewPlugin(time.Hour, 22000, 22999)
+	if err := p.SetRoster(Roster{GeneratedAt: time.Now().UTC().Add(-2 * time.Hour), Entries: []Entry{{DeviceID: "device-01", Port: 22000, CredentialHash: strings.Repeat("a", 64)}}}); err == nil {
+		t.Fatal("stale authorization roster accepted")
 	}
 	if p.Ready() {
-		t.Fatal("plugin became ready without the server-only FRPS token")
+		t.Fatal("plugin became ready without a fresh roster")
 	}
 	r := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, r)
 	if w.Code != http.StatusServiceUnavailable {
-		t.Fatalf("health check status without server token = %d, want 503", w.Code)
+		t.Fatalf("health check status without fresh roster = %d, want 503", w.Code)
 	}
 }
 
-func TestFRPAuthKeyMatchesProtocolVector(t *testing.T) {
-	if got, want := FRPAuthKey("12345678", 1234567890), "ce4334ceaa9e41d450d15fa3c0344ec2"; got != want {
-		t.Fatalf("FRP v0.71.0 token signature mismatch: got %s want %s", got, want)
+func TestPluginReadyWithFreshRosterWithoutServerSharedToken(t *testing.T) {
+	p := NewPlugin(time.Hour, 22000, 22999)
+	if err := p.SetRoster(Roster{GeneratedAt: time.Now().UTC(), Entries: []Entry{{DeviceID: "device-01", Port: 22000, CredentialHash: strings.Repeat("a", 64)}}}); err != nil {
+		t.Fatal(err)
+	}
+	if !p.Ready() {
+		t.Fatal("plugin should be ready from its signed-feed-derived roster; FRP OIDC handles native authentication")
 	}
 }
 

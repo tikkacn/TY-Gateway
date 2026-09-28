@@ -234,12 +234,16 @@ type RescueConfig struct {
 
 // AutoFRPConfig describes only the isolated per-device FRP listener. It is
 // delivered through the device-authenticated config endpoint, never to the
-// customer portal. TLSCA is public trust material, not a credential.
+// customer portal. FRP uses OIDC client credentials derived per device; the
+// shared server token is never sent to or stored on a device.
 type AutoFRPConfig struct {
-	Host        string `json:"host"`
-	ControlPort int    `json:"control_port"`
-	RemotePort  int    `json:"remote_port"`
-	TLSCA       string `json:"tls_ca_pem"`
+	Host              string `json:"host"`
+	ControlPort       int    `json:"control_port"`
+	RemotePort        int    `json:"remote_port"`
+	OIDCIssuer        string `json:"oidc_issuer"`
+	OIDCAudience      string `json:"oidc_audience"`
+	OIDCTokenEndpoint string `json:"oidc_token_endpoint"`
+	TLSCA             string `json:"tls_ca_pem"`
 }
 
 type ExplainRequest struct {

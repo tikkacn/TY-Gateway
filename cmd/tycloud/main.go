@@ -6,11 +6,13 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"tygateway/internal/frpoidc"
 	"tygateway/internal/httpapi"
 	"tygateway/internal/model"
 	"tygateway/internal/recovery"
@@ -125,8 +127,15 @@ func main() {
 	if os.Getenv("TY_FRP_AUTO_ENABLED") == "1" {
 		host := strings.TrimSpace(os.Getenv("TY_FRPS_HOST"))
 		caPath := strings.TrimSpace(os.Getenv("TY_FRP_AUTO_CA_FILE"))
-		if host == "" || caPath == "" {
-			log.Fatal("TY_FRP_AUTO_ENABLED requires TY_FRPS_HOST and TY_FRP_AUTO_CA_FILE")
+		issuer := strings.TrimSuffix(strings.TrimSpace(os.Getenv("TY_FRP_OIDC_ISSUER")), "/")
+		audience := strings.TrimSpace(os.Getenv("TY_FRP_OIDC_AUDIENCE"))
+		keyPath := strings.TrimSpace(os.Getenv("TY_FRP_OIDC_SIGNING_KEY_FILE"))
+		if keyPath == "" {
+			keyPath = "/var/lib/tygateway/frp-oidc-signing-key.pem"
+		}
+		issuerURL, issuerErr := url.Parse(issuer)
+		if host == "" || caPath == "" || issuerErr != nil || issuerURL.Scheme != "https" || issuerURL.Host == "" || issuerURL.User != nil || issuerURL.Fragment != "" || issuerURL.RawQuery != "" || issuerURL.Path != "/api/v1/frp/oidc" || audience == "" || len(audience) > 256 {
+			log.Fatal("TY_FRP_AUTO_ENABLED requires TY_FRPS_HOST, FRP CA, HTTPS OIDC issuer under /api/v1/frp/oidc, and OIDC audience")
 		}
 		ca, readErr := os.ReadFile(caPath)
 		if readErr != nil || len(ca) == 0 || len(ca) > 1<<20 {
@@ -139,6 +148,10 @@ func main() {
 		cert, certErr := x509.ParseCertificate(block.Bytes)
 		if certErr != nil || !cert.IsCA {
 			log.Fatal("TY_FRP_AUTO_CA_FILE must contain a valid CA certificate")
+		}
+		oidcKey, keyErr := frpoidc.LoadOrCreateKey(keyPath)
+		if keyErr != nil {
+			log.Fatal("could not load or securely create FRP OIDC signing key")
 		}
 		controlPort := srv.FRPS.ControlPort
 		if value := os.Getenv("TY_FRP_AUTO_CONTROL_PORT"); value != "" {
@@ -169,7 +182,9 @@ func main() {
 		if srv.FRPRosterToken == "" {
 			log.Fatal("TY_FRP_AUTO_ENABLED requires a separate TY_FRP_ROSTER_TOKEN")
 		}
-		srv.AutoFRP = &model.AutoFRPConfig{Host: host, ControlPort: controlPort, TLSCA: string(ca)}
+		tokenEndpoint := issuer + "/token"
+		srv.AutoFRP = &model.AutoFRPConfig{Host: host, ControlPort: controlPort, OIDCIssuer: issuer, OIDCAudience: audience, OIDCTokenEndpoint: tokenEndpoint, TLSCA: string(ca)}
+		srv.FRPOIDC = &frpoidc.Provider{Issuer: issuer, Audience: audience, Key: oidcKey, VerifyClient: srv.VerifyFRPOIDCClient}
 		srv.AutoFRPPortStart, srv.AutoFRPPortEnd = start, end
 		srv.FRPRosterPortStart, srv.FRPRosterPortEnd = start, end
 	}

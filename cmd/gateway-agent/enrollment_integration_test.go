@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"tygateway/internal/auth"
+	"tygateway/internal/frpauth"
 	"tygateway/internal/httpapi"
 	"tygateway/internal/model"
 	"tygateway/internal/store"
@@ -30,7 +32,7 @@ func TestMACAutoEnrollmentIsRetrySafeAndAllocatesFRP(t *testing.T) {
 	cloud := httpapi.NewServer(st, "admin-test", []byte("0123456789abcdef0123456789abcdef"))
 	cloud.RequireActivation = true
 	cloud.LegacyFRPRetired = true
-	cloud.AutoFRP = &model.AutoFRPConfig{Host: "frp.example.test", ControlPort: 7001, TLSCA: testAutoFRPCA(t)}
+	cloud.AutoFRP = testAutoFRPConfig("frp.example.test", 0, testAutoFRPCA(t))
 	cloud.AutoFRPPortStart, cloud.AutoFRPPortEnd = 22000, 22999
 	cloud.FRPRosterPortStart, cloud.FRPRosterPortEnd = 22000, 22999
 
@@ -118,7 +120,7 @@ func TestMACAutoEnrollmentIsRetrySafeAndAllocatesFRP(t *testing.T) {
 		t.Fatalf("Agent could not authenticate and fetch its post-enrollment configuration: HTTP %d err=%v", status, err)
 	}
 	var config model.DeviceConfig
-	if err := json.Unmarshal(configBytes, &config); err != nil || config.AutoFRP == nil || config.AutoFRP.ControlPort != 7001 || config.AutoFRP.RemotePort != 22000 || config.AutoFRP.Host != "frp.example.test" {
+	if err := json.Unmarshal(configBytes, &config); err != nil || config.AutoFRP == nil || config.AutoFRP.ControlPort != 7001 || config.AutoFRP.RemotePort != 22000 || config.AutoFRP.Host != "frp.example.test" || config.AutoFRP.OIDCIssuer != testFRPOIDCIssuer || config.AutoFRP.OIDCTokenEndpoint != testFRPOIDCIssuer+"/token" {
 		t.Fatalf("Cloud did not deliver the assigned automatic FRP config: err=%v auto_frp=%#v", err, config.AutoFRP)
 	}
 	t.Setenv("TY_GATEWAY_TEST_FRPC_HELPER", "1")
@@ -130,7 +132,8 @@ func TestMACAutoEnrollmentIsRetrySafeAndAllocatesFRP(t *testing.T) {
 		t.Fatal("Agent received the Cloud FRP settings but did not start its FRPC client")
 	}
 	frpcConfig, err := os.ReadFile(a.autoFRP.configPath)
-	if err != nil || !strings.Contains(string(frpcConfig), "serverPort = 7001") || !strings.Contains(string(frpcConfig), "remotePort = 22000") {
+	credential, credentialErr := frpauth.Credential(auth.SecretHash(saved.DeviceSecret), saved.DeviceID, 22000)
+	if err != nil || credentialErr != nil || !strings.Contains(string(frpcConfig), "serverPort = 7001") || !strings.Contains(string(frpcConfig), "remotePort = 22000") || !strings.Contains(string(frpcConfig), `auth.oidc.clientSecret = "`+credential+`"`) {
 		t.Fatalf("Agent did not stage the assigned FRP client configuration: %v", err)
 	}
 	devices, err := st.ListDevices(ctx, time.Minute)

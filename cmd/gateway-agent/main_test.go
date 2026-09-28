@@ -319,6 +319,29 @@ func TestLocalSwitchRetriesBootRestoreWhenDaeIsAlreadyActive(t *testing.T) {
 	}
 }
 
+func TestAppliedSnapshotKeepsOnlyPublicFRPOIDCMetadata(t *testing.T) {
+	config := model.DeviceConfig{
+		Device:  model.CustomerDevice{ID: "device-1", ConfigVersion: 1},
+		Profile: "gfw_precise", ConfigVersion: 1,
+		AutoFRP: testAutoFRPConfig("frp.example.test", 22000, "public-ca"),
+	}
+	customer, err := json.Marshal(map[string]any{
+		"device": model.CustomerDevice{ID: "device-1", ConfigVersion: 1},
+		"nodes":  []model.CustomerNode{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &agent{stateDir: t.TempDir(), state: credentialState{DeviceID: "device-1"}}
+	if err := a.saveAppliedSnapshot(config, customer, ""); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := a.loadAppliedSnapshot()
+	if err != nil || snapshot.Config.AutoFRP == nil || snapshot.Config.AutoFRP.OIDCIssuer != testFRPOIDCIssuer {
+		t.Fatalf("snapshot should preserve public FRP OIDC endpoint metadata: %#v %v", snapshot.Config.AutoFRP, err)
+	}
+}
+
 func TestValidateURLRequiresHTTPS(t *testing.T) {
 	if err := validateURL("https://oec.example.test"); err != nil {
 		t.Fatalf("expected HTTPS URL to pass: %v", err)
@@ -582,7 +605,7 @@ func TestMakeDaePolicyFailsClosedAfterProxyExpiry(t *testing.T) {
 func TestMakeDaePolicyKeepsAutomaticFRPControlDirect(t *testing.T) {
 	policy := makeDaePolicy("https://cloud.example.test", "eth0", model.DeviceConfig{
 		Rescue:  &model.RescueConfig{Host: "legacy.example.test"},
-		AutoFRP: &model.AutoFRPConfig{Host: "isolated.example.test", ControlPort: 7001, RemotePort: 22100},
+		AutoFRP: testAutoFRPConfig("isolated.example.test", 22100, ""),
 	}, true)
 	if len(policy.DirectHosts) != 3 || policy.DirectHosts[0] != "cloud.example.test" || policy.DirectHosts[1] != "legacy.example.test" || policy.DirectHosts[2] != "isolated.example.test" {
 		t.Fatalf("automatic FRP host is not protected from dae routing: %#v", policy.DirectHosts)

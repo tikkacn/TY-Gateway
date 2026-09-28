@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,7 +101,12 @@ func (m *autoFRPManager) Apply(ctx context.Context, state credentialState, confi
 		m.restoreFiles(previousConfig, previousCA, hadPrevious)
 		return errors.New("could not save FRP server trust certificate")
 	}
-	if err := writePrivateFile(nextPath, []byte(text)); err != nil {
+	finalText, _, err := renderAutoFRPConfig(state, config, m.caPath)
+	if err != nil {
+		m.restoreFiles(previousConfig, previousCA, hadPrevious)
+		return errors.New("could not render verified FRP configuration")
+	}
+	if err := writePrivateFile(nextPath, []byte(finalText)); err != nil {
 		m.restoreFiles(previousConfig, previousCA, hadPrevious)
 		return errors.New("could not stage verified FRP configuration")
 	}
@@ -191,7 +197,7 @@ func (m *autoFRPManager) stopLocked() {
 }
 
 func renderAutoFRPConfig(state credentialState, config *model.AutoFRPConfig, caPath string) (string, string, error) {
-	if config == nil || state.DeviceID == "" || !validSecret(state.DeviceSecret) || !safeFRPHost(config.Host) || config.ControlPort != 7001 || config.RemotePort < 22000 || config.RemotePort > 22999 || strings.ContainsAny(state.DeviceID, ".:/\\\r\n\t ") {
+	if config == nil || state.DeviceID == "" || !validSecret(state.DeviceSecret) || !safeFRPHost(config.Host) || config.ControlPort != 7001 || config.RemotePort < 22000 || config.RemotePort > 22999 || !safeFRPOIDCIssuer(config.OIDCIssuer) || !safeFRPURL(config.OIDCTokenEndpoint) || config.OIDCIssuer != strings.TrimSuffix(config.OIDCIssuer, "/") || config.OIDCTokenEndpoint != config.OIDCIssuer+"/token" || config.OIDCAudience == "" || len(config.OIDCAudience) > 256 || strings.ContainsAny(config.OIDCAudience, "\r\n\x00") || strings.ContainsAny(state.DeviceID, ".:/\\\r\n\t ") {
 		return "", "", errors.New("automatic FRP configuration is incomplete or unsafe")
 	}
 	credential, err := frpauth.Credential(auth.SecretHash(state.DeviceSecret), state.DeviceID, config.RemotePort)
@@ -199,7 +205,7 @@ func renderAutoFRPConfig(state credentialState, config *model.AutoFRPConfig, caP
 		return "", "", errors.New("could not derive device-specific FRP credential")
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "serverAddr = %s\nserverPort = %d\nuser = %s\nloginFailExit = true\n", strconv.Quote(config.Host), config.ControlPort, strconv.Quote(state.DeviceID))
+	fmt.Fprintf(&b, "serverAddr = %s\nserverPort = %d\nuser = %s\nloginFailExit = true\nauth.method = \"oidc\"\nauth.additionalScopes = [\"HeartBeats\", \"NewWorkConns\"]\nauth.oidc.clientID = %s\nauth.oidc.clientSecret = %s\nauth.oidc.audience = %s\nauth.oidc.scope = \"frp\"\nauth.oidc.tokenEndpointURL = %s\n", strconv.Quote(config.Host), config.ControlPort, strconv.Quote(state.DeviceID), strconv.Quote(state.DeviceID), strconv.Quote(credential), strconv.Quote(config.OIDCAudience), strconv.Quote(config.OIDCTokenEndpoint))
 	fmt.Fprintf(&b, "transport.tls.enable = true\ntransport.tls.trustedCaFile = %s\n", strconv.Quote(caPath))
 	fmt.Fprintf(&b, "metadatas.device_id = %s\nmetadatas.rescue_key = %s\n", strconv.Quote(state.DeviceID), strconv.Quote(credential))
 	// FRP prefixes every proxy name with the global `user`. Keep the local
@@ -207,6 +213,16 @@ func renderAutoFRPConfig(state credentialState, config *model.AutoFRPConfig, caP
 	// `<device-id>.ssh-rescue`, not `<device-id>.<device-id>.ssh-rescue`.
 	fmt.Fprintf(&b, "\n[[proxies]]\nname = %s\ntype = \"tcp\"\nlocalIP = \"127.0.0.1\"\nlocalPort = 22\nremotePort = %d\n", strconv.Quote("ssh-rescue"), config.RemotePort)
 	return b.String(), credential, nil
+}
+
+func safeFRPURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	return err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil && u.Fragment == "" && !strings.ContainsAny(raw, "\r\n\x00\"'")
+}
+
+func safeFRPOIDCIssuer(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	return safeFRPURL(raw) && err == nil && u.Path == "/api/v1/frp/oidc" && u.RawQuery == ""
 }
 
 func safeFRPHost(host string) bool {

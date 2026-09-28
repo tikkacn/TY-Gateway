@@ -1,12 +1,9 @@
 package frpauth
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -15,16 +12,15 @@ import (
 // listener. Every active operation is authorized from global FRPC metadata;
 // it is not safe to attach this plugin only to NewProxy.
 type Plugin struct {
-	mu          sync.RWMutex
-	roster      Roster
-	maxAge      time.Duration
-	portStart   int
-	portEnd     int
-	serverToken string
+	mu        sync.RWMutex
+	roster    Roster
+	maxAge    time.Duration
+	portStart int
+	portEnd   int
 }
 
-func NewPlugin(maxAge time.Duration, portStart, portEnd int, serverToken string) *Plugin {
-	return &Plugin{maxAge: maxAge, portStart: portStart, portEnd: portEnd, serverToken: serverToken}
+func NewPlugin(maxAge time.Duration, portStart, portEnd int) *Plugin {
+	return &Plugin{maxAge: maxAge, portStart: portStart, portEnd: portEnd}
 }
 
 func (p *Plugin) SetRoster(roster Roster) error {
@@ -40,7 +36,7 @@ func (p *Plugin) SetRoster(roster Roster) error {
 func (p *Plugin) Ready() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	return len(p.serverToken) >= 32 && p.roster.Validate(time.Now().UTC(), p.maxAge, p.portStart, p.portEnd) == nil
+	return p.roster.Validate(time.Now().UTC(), p.maxAge, p.portStart, p.portEnd) == nil
 }
 
 type pluginEnvelope struct {
@@ -57,13 +53,6 @@ type loginContent struct {
 	User      string            `json:"user"`
 	Metas     map[string]string `json:"metas"`
 	Timestamp int64             `json:"timestamp"`
-}
-
-type pluginReply struct {
-	Reject       bool            `json:"reject"`
-	RejectReason string          `json:"reject_reason,omitempty"`
-	Unchange     bool            `json:"unchange"`
-	Content      json.RawMessage `json:"content,omitempty"`
 }
 
 type operationContent struct {
@@ -91,14 +80,13 @@ func (p *Plugin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	allow := false
-	var modifiedContent json.RawMessage
+	var allow bool
 	if r.ContentLength <= 16<<10 {
 		var envelope pluginEnvelope
 		body, err := io.ReadAll(io.LimitReader(r.Body, (16<<10)+1))
 		if err == nil && len(body) <= 16<<10 && json.Unmarshal(body, &envelope) == nil {
 			if r.URL.Query().Get("op") == "Login" {
-				modifiedContent, allow = p.authorizeLogin(envelope.Content)
+				allow = p.authorizeLogin(envelope.Content)
 			} else {
 				allow = p.authorize(r.URL.Query().Get("op"), envelope.Content)
 			}
@@ -109,45 +97,25 @@ func (p *Plugin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"reject":true,"reject_reason":"rescue authorization denied"}`)
 		return
 	}
-	if len(modifiedContent) != 0 {
-		_ = json.NewEncoder(w).Encode(pluginReply{Unchange: false, Content: modifiedContent})
-		return
-	}
 	_, _ = io.WriteString(w, `{"reject":false,"unchange":true}`)
 }
 
-// authorizeLogin validates the per-device credential, then replaces the
-// client's default/empty-token FRP login signature with a signature for the
-// server-only token. This makes a missing FRPS plugin fail closed when FRPS is
-// configured with the same non-empty token.
-func (p *Plugin) authorizeLogin(raw json.RawMessage) (json.RawMessage, bool) {
+// authorizeLogin adds a per-device roster check before FRP's native OIDC
+// verifier. It deliberately leaves the signed OIDC login token unchanged.
+func (p *Plugin) authorizeLogin(raw json.RawMessage) bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	if len(p.serverToken) < 32 || p.roster.Validate(time.Now().UTC(), p.maxAge, p.portStart, p.portEnd) != nil {
-		return nil, false
+	if p.roster.Validate(time.Now().UTC(), p.maxAge, p.portStart, p.portEnd) != nil {
+		return false
 	}
 	var login loginContent
 	if json.Unmarshal(raw, &login) != nil || login.Timestamp <= 0 || login.User == "" || login.Metas["device_id"] != login.User {
-		return nil, false
+		return false
 	}
 	if _, ok := p.roster.Authorize(login.User, login.Metas["rescue_key"]); !ok {
-		return nil, false
+		return false
 	}
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(raw, &fields) != nil {
-		return nil, false
-	}
-	key, _ := json.Marshal(FRPAuthKey(p.serverToken, login.Timestamp))
-	fields["privilege_key"] = key
-	modified, err := json.Marshal(fields)
-	return modified, err == nil
-}
-
-// FRPAuthKey mirrors FRP v0.71.0's token auth signature: lowercase hex MD5 of
-// the configured token followed by the decimal login timestamp.
-func FRPAuthKey(token string, timestamp int64) string {
-	sum := md5.Sum([]byte(token + strconv.FormatInt(timestamp, 10)))
-	return hex.EncodeToString(sum[:])
+	return true
 }
 
 func (p *Plugin) authorize(op string, raw json.RawMessage) bool {
