@@ -28,7 +28,7 @@ import (
 	"tygateway/internal/model"
 )
 
-const defaultVersion = "0.6.2-oec-switch"
+const defaultVersion = "0.8.5"
 
 const (
 	localProxyFile = "local-proxy.json"

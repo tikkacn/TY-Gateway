@@ -1,26 +1,23 @@
-# OEC2 FRP authorization test
+# FRP 授权及实机记录
 
-## What the local integration test proves
+更新：2026-10-01。
 
-The Go integration test launches official FRP 0.71.0 `frps` and `frpc` only on loopback. It exercises the native OIDC client-credentials exchange, confirms an invalid device credential is rejected, confirms the authorization plugin rejects a mismatched rescue key/port, and verifies an authorized client forwards an SSH greeting through its assigned port. It does not connect to or alter the public FRPS listener.
+## 已有证据
 
-The test has passed on the Linux FRPS host with the official FRP 0.71.0 binaries. The ARM64 test kit can also be built locally from the verified upstream archive:
+Linux FRPS 主机上的官方 FRP 0.71.0 loopback 测试验证了 OIDC、错误设备凭据拒绝、设备端口约束，以及合法连接的 SSH greeting 转发。这是隔离测试，不是公网设备链路。
 
-```powershell
-.\scripts\build-frp-auth-oec2-test.ps1
-```
+上一轮 OEC2 一键安装后，用户确认自动注册成功，并能通过设备 FRP 入口看到 SSH root 密码提示，认可该轮自动注册/隧道握手。未完成 root 登录不能阻止判定 SSH 握手通过，但不能据此宣称所有代理功能通过。
 
-On OEC2, run the test command shown in the generated `work/frp-auth-oec2-test-v0.71.0/README.md`. Test-only OIDC keys, tokens, ports, and credentials are generated locally and must not be reused in production.
+## 现在的状态
 
-## Current server-side pilot state (2026-09-29)
+- Cloud 提供 HTTPS OIDC discovery/JWKS；FRPS 使用设备级 OIDC，插件限制设备、代理名和分配端口。
+- FRPS/FRPC 控制端口仍为 7001，SSH 映射池为 22000–22999。
+- 按用户要求，两台旧测试设备及 MAC 准入/FRP登记已清空，roster 为 0，映射监听已释放；后台设备序号从 1 开始。
+- 旧数据库和 roster 有 root-only 人工恢复备份，不进入公开仓库。
+- 新一轮用户重新登记设备真实 MAC；首次注册自动分配 22000，第二台分配 22001，不需手动写 FRP 密码。
 
-- Cloud OIDC discovery and JWKS are publicly reachable over HTTPS. Invalid clients receive HTTP 401. The signing private key stays on the Cloud host.
-- FRPS 0.71.0 on TCP 7001 validates OIDC tokens and loads the per-device authorization plugin. The allowed mapping pool is 22000–22999; the plugin listens only on loopback.
-- The plugin fetches a fresh Cloud roster. OEC2 device #105 currently has the first free mapping, TCP 22000, and appears in the roster.
-- The original FRPS config, Cloud binary/environment, and previous plugin binary are backed up on their respective servers.
+## 本轮验证
 
-## What still requires the OEC2 device
+从签名 v0.8.5 Pilot 一键安装，核对设备码、注册、FRP公网SSH握手及整机重启恢复。不得用仅有 FRPC 进程或 Cloud roster 来替代真实隧道证据。
 
-No production OEC2 FRPC connection has authenticated yet. The FRPS listener, OIDC endpoint, and roster health do not prove that OEC2 obtained the new OIDC metadata, started FRPC, or exposed SSH. After installing the signed GitHub pilot on the existing registered OEC2, verify the Agent log, FRPC process, FRPS connection, and the administrator-side SSH probe. Do not report an FRP tunnel as working until the SSH banner is reachable through TCP 22000.
-
-Device #105's MAC has already been claimed. A future full reflash that deletes `/var/lib/ty-gateway/credentials.json` will generate a new device secret and cannot reclaim that already-claimed MAC automatically. Preserve the current credentials for this pilot. A destructive re-enrollment needs a deliberate administrator-side identity re-arm first; MAC alone is not sufficient authority to take over an existing device.
+普通升级保留注册凭据；彻底重刷需要管理员重置已认领身份。本轮已经明确清空，所以不用保留两台旧测试身份。MAC 是小规模准入标识，不是密码或强硬件证明。

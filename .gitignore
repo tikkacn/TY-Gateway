@@ -1,7 +1,8 @@
-work/
-outputs/
-dist/
-release/
+# Root-only generated directories: internal/release is required source.
+/work/
+/outputs/
+/dist/
+/release/
 *.local
 .env
 .env.*
