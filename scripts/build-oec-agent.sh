@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 out_dir="${1:-work/oec-dist}"
-version="${TY_AGENT_VERSION:-0.8.7}"
+version="${TY_AGENT_VERSION:-0.8.9}"
 release_github_repo="${TY_RELEASE_GITHUB_REPO:-tikkacn/TY-Gateway}"
 if [[ -n "$release_github_repo" && ! "$release_github_repo" =~ ^[A-Za-z0-9-]{1,39}/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,99}$ ]]; then
   echo "TY_RELEASE_GITHUB_REPO must be an owner/repository name" >&2

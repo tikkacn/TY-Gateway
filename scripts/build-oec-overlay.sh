@@ -18,6 +18,7 @@ python3="${PYTHON3:-python3}"
 [[ -f firmware/oec/rootfs/etc/systemd/system/ty-gateway-update-recover.service ]] || { echo "update recovery unit is missing" >&2; exit 2; }
 [[ -f firmware/oec/rootfs/etc/systemd/system/ty-gateway-update-service.service && -f scripts/ty-gateway-update-service.py ]] || { echo "update service payload is missing" >&2; exit 2; }
 [[ -f firmware/oec/rootfs/etc/systemd/system/dae.service.d/ty-gateway-forwarding.conf && -f firmware/oec/rootfs/usr/local/libexec/ty-gateway-dae-preflight ]] || { echo "dae forwarding preflight is missing" >&2; exit 2; }
+[[ -f firmware/oec/rootfs/usr/local/libexec/ty_gateway_dae_compat.py ]] || { echo "dae ingress compatibility helper is missing" >&2; exit 2; }
 [[ -f firmware/oec/rootfs/etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding ]] || { echo "dae forwarding NetworkManager dispatcher is missing" >&2; exit 2; }
 [[ -f scripts/install-oec-overlay.sh ]] || { echo "overlay installer is missing" >&2; exit 2; }
 [[ -f scripts/restore-oec-overlay.sh ]] || { echo "overlay restore helper is missing" >&2; exit 2; }
@@ -33,6 +34,7 @@ install -m 0755 -- "$release_fetch" "$out_dir/payload/usr/local/bin/ty-release-f
 install -m 0755 -- "$frpc" "$out_dir/payload/usr/local/bin/frpc"
 install -m 0755 -- "$dae_helper" "$out_dir/payload/usr/local/libexec/ty-gateway-dae-helper"
 install -m 0755 -- firmware/oec/rootfs/usr/local/libexec/ty-gateway-dae-preflight "$out_dir/payload/usr/local/libexec/ty-gateway-dae-preflight"
+install -m 0644 -- firmware/oec/rootfs/usr/local/libexec/ty_gateway_dae_compat.py "$out_dir/payload/usr/local/libexec/ty_gateway_dae_compat.py"
 install -m 0755 -- firmware/oec/rootfs/etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding "$out_dir/payload/etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding"
 install -m 0755 -- firmware/oec/rootfs/usr/local/libexec/ty-gateway-firstboot "$out_dir/payload/usr/local/libexec/ty-gateway-firstboot"
 install -m 0755 -- firmware/oec/rootfs/usr/local/libexec/ty-gateway-network "$out_dir/payload/usr/local/libexec/ty-gateway-network"

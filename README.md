@@ -2,7 +2,9 @@
 
 TY Gateway 是面向 ARM64 单网口旁路由设备的管理与分流软件。本仓库保存完整的可公开源码，并分发签名安装/升级包；不包含设备配置、订阅凭据或运维工作目录。
 
-## 当前测试版本：v0.8.8 Pilot
+## 当前测试版本：v0.8.9 Pilot
+
+本轮补齐 LAN DNS 与 DAE DNS 的动态交接，以及 Linux 6.6 之前透明流量入口的兼容处理。代理开启且 DAE DNS 可用时，局域网 DNS 交给 DAE；关闭或不可用时恢复原直连上游，不重启 DHCP 或清租约。旧内核在 DAE 启动/重载后自动校正透明入口，6.6 及更新内核跳过该校正，不改内核或 DAE 二进制。上一轮 6.1.157 测试机已由用户确认 Windows YouTube 在 DAE 重启后仍可访问；全新首装、整机重启和其他内核仍需新一轮实机验收。详见 [DNS 交接](docs/LAN-DNS-HANDOFF.md) 和 [内核兼容](docs/DAE-KERNEL-COMPATIBILITY.md)。
 
 本轮修复设备 HTTPS 通道、设备本机 DNS 与分类节点本地保存。管理员网页仍使用不带端口的原地址；设备内部使用 8443。已有设备的 stock 地址和凭据地址受控迁移，不重新注册。分类选择经本机 DAE 确认后原子保存，常规云端同步保留选择，管理员明确重置才清除本地覆盖。详见 [运行与本地保存说明](docs/LOCAL-PREFERENCES.md)。保留此前管理地址切换、测速、配置备份和升级功能。完成状态见 [功能清单](docs/FEATURES.md)。Pilot 是实机测试版，不是商业稳定版。
 
@@ -15,7 +17,7 @@ TY Gateway 是面向 ARM64 单网口旁路由设备的管理与分流软件。�
 在支持的 ARM64 Armbian 上以 root 或 sudo 执行：
 
 ```bash
-curl -fL --retry 3 https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.8/bootstrap-oec.sh -o /tmp/ty-gateway-bootstrap-v0.8.8.sh && sudo bash /tmp/ty-gateway-bootstrap-v0.8.8.sh
+curl -fL --retry 3 https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.9/bootstrap-oec.sh -o /tmp/ty-gateway-bootstrap-v0.8.9.sh && sudo bash /tmp/ty-gateway-bootstrap-v0.8.9.sh
 ```
 
 安装器自动安装运行依赖、固定版本的官方 DAE、设备程序和服务。联网后 Agent 自动认领预登记 MAC、保存专属身份、获取配置并建立 FRP；无需逐台激活文件或在公开脚本里写入 FRP 密码。FRPS 与 FRPC 共用控制端口 **7001**，设备 SSH 映射池为 **22000–22999**。
@@ -29,7 +31,7 @@ curl -fL --retry 3 https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.
 已安装设备不要重跑首装 bootstrap。此次 Pilot 修复可在旧地址 SSH 执行签名更新器：
 
 ```bash
-sudo /usr/local/libexec/ty-gateway-update apply-online --channel pilot --expect-version 0.8.8
+sudo /usr/local/libexec/ty-gateway-update apply-online --channel pilot --expect-version 0.8.9
 ```
 
 更新保留设备注册、网络及用户配置，不会主动切换管理 IP。也可在“更新与备份”选择测试版，上传同版 `release.json` 和软件包；用户页面的在线按钮只检查稳定版。

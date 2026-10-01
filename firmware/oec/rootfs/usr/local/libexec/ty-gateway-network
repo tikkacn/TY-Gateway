@@ -349,6 +349,18 @@ def main():
     controller = Controller(NetworkManager(interface), "/var/lib/ty-gateway-network/transaction.json")
     lan.recover()
 
+    def watch_lan_dns():
+        while True:
+            try:
+                lan.refresh_dns()
+            except Exception:
+                LOG.warning('LAN DNS upstream reconciliation failed; will retry')
+            time.sleep(5)
+
+    # Independent of cloud/Agent availability. Updating only servers-file and
+    # signalling HUP leaves LAN addresses, DHCP leases and FRP untouched.
+    threading.Thread(target=watch_lan_dns, daemon=True, name='lan-dns').start()
+
     class Handler(socketserver.StreamRequestHandler):
         def handle(self):
             self.request.settimeout(15)

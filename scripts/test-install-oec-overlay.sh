@@ -57,6 +57,7 @@ new_fixture() {
   printf '#!/usr/bin/env bash\nif [[ "${1:-}" == --version ]]; then exit 0; fi\nif [[ "${1:-}" == verify ]]; then grep -q "^invalid$" "${3:-}" && exit 1; exit 0; fi\nexit 2\n' > "$package/payload/usr/local/bin/frpc"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$package/payload/usr/local/libexec/ty-gateway-dae-helper"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$package/payload/usr/local/libexec/ty-gateway-dae-preflight"
+  printf '# fixture compatibility module\n' > "$package/payload/usr/local/libexec/ty_gateway_dae_compat.py"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$package/payload/etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$package/payload/usr/local/libexec/ty-gateway-firstboot"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$package/payload/usr/local/libexec/ty-gateway-network"
@@ -205,6 +206,7 @@ assert_eq "$(state_of ty-frpc-rescue.service)" "loaded disabled inactive" "fresh
 assert_eq "$(state_of ty-gateway-local.service)" "loaded enabled active" "fresh local manager state"
 assert_eq "$(state_of ty-gateway-agent.service)" "loaded enabled active" "fresh MAC auto-enrollment Agent state"
 assert_file_eq "$install_root/usr/local/libexec/ty-gateway-dae-preflight" $'#!/usr/bin/env bash\nexit 0' "installed dae preflight"
+assert_file_eq "$install_root/usr/local/libexec/ty_gateway_dae_compat.py" '# fixture compatibility module' "installed dae compatibility helper"
 assert_file_eq "$install_root/etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding" $'#!/usr/bin/env bash\nexit 0' "installed dae NetworkManager dispatcher"
 assert_file_eq "$install_root/etc/systemd/system/dae.service.d/ty-gateway-forwarding.conf" $'[Service]\nExecStartPre=/usr/local/libexec/ty-gateway-dae-preflight\nExecReload=\nExecReload=/usr/local/libexec/ty-gateway-dae-preflight\nExecReload=/usr/bin/dae reload $MAINPID' "installed dae preflight drop-in"
 assert_no_frpc_mutation

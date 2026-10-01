@@ -35,6 +35,7 @@ foreach ($required in @(
     (Join-Path $rootfsPath 'etc\systemd\system\ty-gateway-update-service.service'),
     (Join-Path $rootfsPath 'etc\systemd\system\dae.service.d\ty-gateway-forwarding.conf'),
     (Join-Path $rootfsPath 'usr\local\libexec\ty-gateway-dae-preflight'),
+    (Join-Path $rootfsPath 'usr\local\libexec\ty_gateway_dae_compat.py'),
     (Join-Path $rootfsPath 'etc\NetworkManager\dispatcher.d\90-ty-gateway-dae-forwarding'),
     (Join-Path $rootfsPath 'usr\local\libexec\ty-gateway-firstboot')
 )) {
@@ -72,6 +73,7 @@ Copy-Payload 'etc\systemd\system\ty-frpc-rescue.service' 'etc\systemd\system\ty-
 Copy-Payload 'usr\local\libexec\ty-gateway-firstboot' 'usr\local\libexec\ty-gateway-firstboot'
 Copy-Payload 'usr\local\libexec\ty-gateway-network' 'usr\local\libexec\ty-gateway-network'
 Copy-Payload 'usr\local\libexec\ty-gateway-dae-preflight' 'usr\local\libexec\ty-gateway-dae-preflight'
+Copy-Payload 'usr\local\libexec\ty_gateway_dae_compat.py' 'usr\local\libexec\ty_gateway_dae_compat.py'
 Copy-Payload 'etc\NetworkManager\dispatcher.d\90-ty-gateway-dae-forwarding' 'etc\NetworkManager\dispatcher.d\90-ty-gateway-dae-forwarding'
 Copy-Payload 'usr\local\libexec\ty_gateway_lan.py' 'usr\local\libexec\ty_gateway_lan.py'
 Copy-Payload 'etc\ty-gateway\agent.env.example' 'etc\ty-gateway\agent.env.example'

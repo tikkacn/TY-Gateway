@@ -105,6 +105,7 @@ required_files=(
   payload/usr/local/libexec/ty-gateway-update-service
   payload/usr/local/libexec/ty-gateway-dae-helper
   payload/usr/local/libexec/ty-gateway-dae-preflight
+  payload/usr/local/libexec/ty_gateway_dae_compat.py
   payload/etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding
   payload/usr/local/libexec/ty-gateway-firstboot
   payload/usr/local/libexec/ty-gateway-network
@@ -236,6 +237,7 @@ declare -a managed_targets=(
   /usr/local/libexec/ty-gateway-update-service
   /usr/local/libexec/ty-gateway-dae-helper
   /usr/local/libexec/ty-gateway-dae-preflight
+  /usr/local/libexec/ty_gateway_dae_compat.py
   /etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding
   /usr/local/libexec/ty-gateway-firstboot
   /usr/local/libexec/ty-gateway-network
@@ -259,6 +261,9 @@ declare -a managed_targets=(
   /var/lib/ty-gateway/activation.json
   /var/lib/ty-gateway/pending-enrollment.json
   /var/lib/ty-gateway/.initialized
+  /var/lib/ty-gateway-network/lan.conf
+  /var/lib/ty-gateway-network/dns-upstream.conf
+  /var/lib/ty-gateway-network/dns-reload.pending
   /etc/systemd/system/multi-user.target.wants/ty-gateway-firstboot.service
   /etc/systemd/system/multi-user.target.wants/ty-gateway-dae-helper.service
   /etc/systemd/system/multi-user.target.wants/ty-gateway-local.service
@@ -313,7 +318,7 @@ for relative in "${managed_targets[@]}"; do
   fi
   if [[ "$keep_backup" == 1 ]]; then
     case "$relative" in
-      /etc/ty-gateway/agent.env|/etc/ty-gateway/local.env|/var/lib/ty-gateway/*|/etc/systemd/system/multi-user.target.wants/*)
+      /etc/ty-gateway/agent.env|/etc/ty-gateway/local.env|/var/lib/ty-gateway/*|/var/lib/ty-gateway-network/*|/etc/systemd/system/multi-user.target.wants/*)
         snapshot_kind=state ;;
       *) snapshot_kind=software ;;
     esac
@@ -468,6 +473,7 @@ install -m 0755 "$payload_dir/usr/local/libexec/ty-gateway-update" "$(target /us
 install -m 0755 "$payload_dir/usr/local/libexec/ty-gateway-update-service" "$(target /usr/local/libexec/ty-gateway-update-service)"
 install -m 0755 "$payload_dir/usr/local/libexec/ty-gateway-dae-helper" "$(target /usr/local/libexec/ty-gateway-dae-helper)"
 install -m 0755 "$payload_dir/usr/local/libexec/ty-gateway-dae-preflight" "$(target /usr/local/libexec/ty-gateway-dae-preflight)"
+install -m 0644 "$payload_dir/usr/local/libexec/ty_gateway_dae_compat.py" "$(target /usr/local/libexec/ty_gateway_dae_compat.py)"
 install -m 0755 "$payload_dir/etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding" "$(target /etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding)"
 install -m 0755 "$payload_dir/usr/local/libexec/ty-gateway-firstboot" "$(target /usr/local/libexec/ty-gateway-firstboot)"
 install -m 0755 "$payload_dir/usr/local/libexec/ty-gateway-network" "$(target /usr/local/libexec/ty-gateway-network)"

@@ -49,6 +49,7 @@ software_paths=(
   /usr/local/libexec/ty-gateway-update-service
   /usr/local/libexec/ty-gateway-dae-helper
   /usr/local/libexec/ty-gateway-dae-preflight
+  /usr/local/libexec/ty_gateway_dae_compat.py
   /etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding
   /usr/local/libexec/ty-gateway-firstboot
   /usr/local/libexec/ty-gateway-network
@@ -122,6 +123,14 @@ for unit in "${units[@]}"; do
   systemctl stop "$unit" >/dev/null 2>&1 || true
   systemctl disable "$unit" >/dev/null 2>&1 || true
 done
+# Compatibility handoff before replacing a newer network helper with an older
+# one. This preserves today's LAN plan, but removes an upstream indirection
+# which the old helper cannot update when the proxy is later switched off.
+dns_helper="$(target /usr/local/libexec/ty_gateway_lan.py)"
+if [[ "${TY_OVERLAY_TEST_MODE:-0}" != 1 && -f "$dns_helper" && ! -L "$dns_helper" ]] && \
+   grep -q '^def legacy_dns_config():' "$dns_helper"; then
+  /usr/bin/python3 "$dns_helper" dns-legacy
+fi
 for relative in "${software_paths[@]}"; do
   destination="$(target "$relative")"
   rm -f -- "$destination"

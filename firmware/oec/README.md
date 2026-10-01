@@ -22,6 +22,8 @@ v0.8.8 的设备内部 HTTPS 通道为 8443，管理员网页仍不带端口。�
 
 ## 构建和边界
 
+v0.8.9 纳入 LAN DNS 动态交接及旧内核透明入口兼容：代理/DNS可用时转交 DAE，关闭或不可用时恢复直连；Linux 6.6 之前在 DAE 启动和重载后自动校正入口，新内核跳过，不替换内核或 DAE。6.1.157 测试机 Windows YouTube 在 DAE 重启后已确认可用；全新首装及整机重启仍待新轮验收。详见仓库 `docs/LAN-DNS-HANDOFF.md` 与 `docs/DAE-KERNEL-COMPATIBILITY.md`。
+
 从同一干净提交构建四个 ARM64 Go 程序，组包时传入明确路径及固定官方 FRPC。签名包、独立验签器与 bootstrap 必须一致。公开包不含设备身份、订阅/节点秘密、FRP 密码、发布私钥或生产数据库。
 
 Pilot 仅分发至 GitHub，不触及 R2/Guide。完全离线首装仍受 apt 系统依赖限制，已安装设备的签名离线升级不依赖 GitHub。完整功能及未完成项见仓库 docs/FEATURES.md，当前安装入口和实机流程见 README.md 与 docs/OEC-PILOT-ACCEPTANCE.md。

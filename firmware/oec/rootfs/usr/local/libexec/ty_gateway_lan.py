@@ -1,5 +1,6 @@
 """Dedicated TY LAN service configuration. No shell or user-controlled paths."""
 import ipaddress
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,10 @@ SETTINGS = ROOT / 'lan-settings.json'
 JOURNAL = ROOT / 'lan-transaction.json'
 FORWARD = ROOT / 'forwarding.json'
 UNIT = 'ty-gateway-lan.service'
+DNS_SERVERS = ROOT / 'dns-upstream.conf'
+DNS_LOCK = ROOT / 'dns-upstream.lock'
+DNS_PENDING = ROOT / 'dns-reload.pending'
+DAE_MANAGED = Path('/etc/dae/ty-gateway/managed.dae')
 
 
 def parse_default_route_interface(data):
@@ -178,7 +183,10 @@ def config_text(settings):
     lines = ['bind-interfaces', 'listen-address='+str(address.ip), 'except-interface=lo',
              'no-resolv', 'no-hosts', 'domain-needed', 'bogus-priv', 'filter-AAAA', 'cache-size=1000',
              'port='+('53' if settings['dns_enabled'] else '0')]
-    lines += ['server='+str(ipaddress.IPv4Address(x)) for x in servers]
+    # dnsmasq reloads servers-file on HUP; it does not reload ordinary config.
+    # Keep the customer's direct upstreams in settings, not parallel server=
+    # lines which could randomly bypass dae while the proxy switch is on.
+    lines += ['servers-file='+str(DNS_SERVERS)]
     if plan['dhcp_enabled']:
         lines += ['dhcp-range='+','.join([plan['pool_start'],plan['pool_end'],str(address.netmask),'12h']),
                   'dhcp-option=option:router,'+str(address.ip),
@@ -188,6 +196,113 @@ def config_text(settings):
             mac = ':'.join(item['mac'][i:i+2] for i in range(0,12,2))
             lines.append('dhcp-host='+mac+','+item['ip']+',infinite')
     return '\n'.join(lines)+'\n'
+
+
+def dns_service_active(unit):
+    try:
+        return subprocess.run(['/usr/bin/systemctl', 'is-active', '--quiet', unit],
+                              capture_output=True, timeout=2).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def dae_dns_ready(address):
+    # A management-name query is independent of proxy-node health. Never
+    # make restoring direct LAN DNS depend on an external proxy/HTTP check.
+    xid = os.urandom(2)
+    qname = b''.join(bytes([len(x)])+x.encode('ascii')
+                     for x in 'oec.188811.xyz'.split('.')) + b'\0'
+    query = xid + struct.pack('!HHHHH', 0x100, 1, 0, 0, 0) + qname + struct.pack('!HH', 1, 1)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.settimeout(1)
+            sock.sendto(query, (address, 5353))
+            data, peer = sock.recvfrom(4096)
+        if len(data) < 12 or data[:2] != xid or peer != (address, 5353):
+            return False
+        _, flags, _, answers, _, _ = struct.unpack('!HHHHHH', data[:12])
+        return flags & 0x8000 != 0 and flags & 15 == 0 and answers > 0
+    except OSError:
+        return False
+
+
+def dns_upstreams(settings, force_direct=False):
+    address, servers, _ = validated(settings)
+    use_dae = False
+    if settings['dns_enabled'] and not force_direct:
+        try:
+            enabled = '# proxy_enabled: true' in DAE_MANAGED.read_text().splitlines()
+        except OSError:
+            enabled = False
+        use_dae = enabled and dns_service_active('dae.service') and dae_dns_ready(str(address.ip))
+    if use_dae:
+        return 'server='+str(address.ip)+'#5353\n'
+    return ''.join('server='+str(ipaddress.IPv4Address(x))+'\n' for x in servers)
+
+
+@contextmanager
+def dns_lock():
+    import fcntl
+    with DNS_LOCK.open('a', encoding='ascii') as stream:
+        os.chmod(DNS_LOCK, 0o600)
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        yield
+
+
+def refresh_dns(force_direct=False, preparing=False):
+    if not SETTINGS.exists() or not CONFIG.exists():
+        return False
+    if not preparing and not dns_service_active(UNIT):
+        return False
+    with dns_lock():
+        settings_before = SETTINGS.read_text()
+        settings = json.loads(settings_before)
+        config_before = CONFIG.read_text()
+        directive = 'servers-file='+str(DNS_SERVERS)
+        if not preparing and directive not in config_before.splitlines():
+            return False  # An older dnsmasq must first restart with servers-file.
+        upstream = dns_upstreams(settings, force_direct)
+        if SETTINGS.read_text() != settings_before or CONFIG.read_text() != config_before:
+            return False  # A concurrent customer's save wins; retry next cycle.
+        changed = not DNS_SERVERS.exists() or DNS_SERVERS.read_text() != upstream
+        if changed:
+            atomic(DNS_SERVERS, upstream)
+            if not preparing:
+                atomic(DNS_PENDING, 'pending\n')
+        if preparing:
+            # Migrate only upstream directives. Preserve the exact address,
+            # pool, leases, reservations and all other LAN config lines.
+            lines = [x for x in config_before.splitlines()
+                     if not x.startswith('server=') and x != directive]
+            candidate = '\n'.join(lines+[directive])+'\n'
+            if candidate != config_before:
+                atomic(CONFIG, candidate)
+            DNS_PENDING.unlink(missing_ok=True)
+        elif changed or DNS_PENDING.exists():
+            # A failed signal leaves the marker for retry without removing
+            # the valid upstream file or restarting the DHCP service.
+            run('/usr/bin/systemctl', 'kill', '--signal=HUP', '--kill-whom=main', UNIT)
+            DNS_PENDING.unlink(missing_ok=True)
+        return changed
+
+
+def legacy_dns_config():
+    # Software rollback must retain today's customer settings, but older
+    # network helpers cannot maintain a dynamic servers-file. Materialize
+    # only the current direct upstreams before replacing those helpers.
+    refresh_dns(force_direct=True)
+    if not SETTINGS.exists() or not CONFIG.exists():
+        return False
+    with dns_lock():
+        current = CONFIG.read_text()
+        directive = 'servers-file='+str(DNS_SERVERS)
+        if directive not in current.splitlines():
+            return False
+        upstream = dns_upstreams(read_settings(), force_direct=True)
+        lines = [x for x in current.splitlines()
+                 if x != directive and not x.startswith('server=')]
+        atomic(CONFIG, '\n'.join(lines)+'\n'+upstream)
+        return True
 
 
 def restore(snapshot):
@@ -280,6 +395,7 @@ def prepare_forwarding():
             raise RuntimeError('Unfinished LAN transaction requires recovery')
     settings=read_settings()
     address,_,_=validated(settings)
+    refresh_dns(preparing=True)
     stop_forwarding()
     if not settings['plan']['dhcp_enabled']:
         return
@@ -320,5 +436,9 @@ if __name__=='__main__':
         prepare_forwarding()
     elif sys.argv[1:] == ['stop']:
         stop_forwarding()
+    elif sys.argv[1:] == ['dns-direct']:
+        refresh_dns(force_direct=True)
+    elif sys.argv[1:] == ['dns-legacy']:
+        legacy_dns_config()
     else:
         raise SystemExit('unsupported operation')
