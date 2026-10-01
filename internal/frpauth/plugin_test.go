@@ -90,6 +90,15 @@ func TestCredentialAndPluginAuthorization(t *testing.T) {
 	if _, ok := request("Login", login); !ok {
 		t.Fatal("failed roster update discarded last good state")
 	}
+	if err := p.SetRoster(Roster{GeneratedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	for op, content := range map[string]string{"Login": login, "Ping": user, "NewWorkConn": workConn, "NewProxy": validProxy,
+		"NewUserConn": strings.TrimSuffix(user, "}") + `,"proxy_name":"device-01.ssh-rescue"}`} {
+		if _, ok := request(op, content); ok {
+			t.Fatalf("revoked device still authorized for %s", op)
+		}
+	}
 }
 
 func TestPluginRequiresFreshRoster(t *testing.T) {

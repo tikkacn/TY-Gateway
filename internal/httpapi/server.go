@@ -160,6 +160,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(b)
 		return
 	}
+	if r.URL.Path == "/assets/deactivation.js" {
+		b, err := webFS.ReadFile("web/deactivation.js")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(b)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/api/v1/") {
 		s.api(w, r)
 		return
@@ -370,9 +381,9 @@ func (s *Server) allocateAutoFRPPort(ctx context.Context, deviceID string) (int,
 		}
 		return d.RescueSSHPort, nil
 	}
-	// The dedicated listener's port pool is reserved by the Cloud database;
-	// unlike the legacy listener, it is not probed one TCP port at a time.
-	return s.Store.AllocateRescueSSHPort(ctx, deviceID, s.AutoFRPPortStart, s.AutoFRPPortEnd)
+	// Deactivation removes the database reservation before an old FRPC's
+	// control session necessarily closes. Do not reuse a still-listening port.
+	return s.allocatePortInRange(ctx, deviceID, s.AutoFRP.Host, s.AutoFRPPortStart, s.AutoFRPPortEnd)
 }
 
 func (s *Server) allocatePortInRange(ctx context.Context, deviceID, host string, start, end int) (int, error) {
@@ -845,6 +856,9 @@ func (s *Server) adminAPI(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	case path == "/admin/devices/reset-customer-settings" && r.Method == http.MethodPost:
 		s.adminResetCustomerSettings(w, r)
+		return
+	case path == "/admin/devices/deactivate" && r.Method == http.MethodPost:
+		s.adminDeactivateDevice(w, r)
 		return
 	case path == "/admin/devices/software" && r.Method == http.MethodGet:
 		s.adminSoftwareStatus(w, r)

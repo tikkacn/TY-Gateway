@@ -192,6 +192,9 @@ func (s *MemoryStore) RegisterApprovedDevice(_ context.Context, in model.Registe
 	if !exists || record.ClaimMode != "activation" || !validDeviceSecret(in.DeviceSecret) || !validActivation(record.tokenHash, in.ActivationCode) {
 		return model.Device{}, "", ErrInvalidActivation
 	}
+	if s.revokedDeviceSecrets[auth.SecretHash(in.DeviceSecret)] {
+		return model.Device{}, "", ErrInvalidActivation
+	}
 	if record.ClaimedAt != nil {
 		d, ok := s.devices[record.DeviceID]
 		if !ok || subtle.ConstantTimeCompare([]byte(s.deviceSecrets[d.ID]), []byte(auth.SecretHash(in.DeviceSecret))) != 1 {
@@ -239,6 +242,9 @@ func (s *MemoryStore) RegisterMACClaim(_ context.Context, in model.RegisterDevic
 	defer s.mu.Unlock()
 	record, exists := s.deviceEnrollments[serial]
 	if !exists || record.ClaimMode != "mac" || !time.Now().UTC().Before(record.ExpiresAt) {
+		return model.Device{}, "", ErrInvalidActivation
+	}
+	if s.revokedDeviceSecrets[auth.SecretHash(in.DeviceSecret)] {
 		return model.Device{}, "", ErrInvalidActivation
 	}
 	if record.ClaimedAt != nil {
@@ -433,6 +439,9 @@ func (s *SQLStore) RegisterApprovedDevice(ctx context.Context, in model.Register
 	if claimMode != "activation" || !validDeviceSecret(in.DeviceSecret) || !validActivation(hash, in.ActivationCode) {
 		return model.Device{}, "", ErrInvalidActivation
 	}
+	if err := rejectRevokedCredential(ctx, tx, in.DeviceSecret); err != nil {
+		return model.Device{}, "", err
+	}
 	if claimed.Valid {
 		var storedHash string
 		if !claimedID.Valid || tx.QueryRowContext(ctx, `SELECT secret_hash FROM devices WHERE id=?`, claimedID.String).Scan(&storedHash) != nil || subtle.ConstantTimeCompare([]byte(storedHash), []byte(auth.SecretHash(in.DeviceSecret))) != 1 {
@@ -496,6 +505,9 @@ func (s *SQLStore) RegisterMACClaim(ctx context.Context, in model.RegisterDevice
 	}
 	if claimMode != "mac" {
 		return model.Device{}, "", ErrInvalidActivation
+	}
+	if err := rejectRevokedCredential(ctx, tx, in.DeviceSecret); err != nil {
+		return model.Device{}, "", err
 	}
 	if claimed.Valid {
 		var storedHash string

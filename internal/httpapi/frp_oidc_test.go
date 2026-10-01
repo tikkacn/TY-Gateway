@@ -25,7 +25,7 @@ func TestFRPOIDCTokenRequiresClaimedEnabledMACDevice(t *testing.T) {
 	srv := NewServer(st, "admin-test", []byte("0123456789abcdef0123456789abcdef"))
 	srv.RequireActivation = true
 	srv.LegacyFRPRetired = true
-	srv.AutoFRP = testOIDCAutoFRP("frp.example.test")
+	srv.AutoFRP = testOIDCAutoFRP("127.0.0.1")
 	srv.AutoFRPPortStart, srv.AutoFRPPortEnd = 22000, 22999
 
 	prepare := httptest.NewRequest(http.MethodPost, "/api/v1/admin/enrollments", strings.NewReader(`{"mac":"02:00:00:00:70:44","note":"oidc-test"}`))
@@ -86,5 +86,15 @@ func TestFRPOIDCTokenRequiresClaimedEnabledMACDevice(t *testing.T) {
 	}
 	if got := issue(credential); got.Code != http.StatusUnauthorized {
 		t.Fatalf("disabled device retained FRP token access: %d %s", got.Code, got.Body.String())
+	}
+	d, err := st.GetDevice(ctx, claim.Device.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DeactivateDevice(ctx, d.ID, d.ConfigVersion, d.MAC); err != nil {
+		t.Fatal(err)
+	}
+	if got := issue(credential); got.Code != http.StatusUnauthorized {
+		t.Fatalf("deactivated identity retained OIDC access: %d", got.Code)
 	}
 }

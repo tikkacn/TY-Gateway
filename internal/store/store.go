@@ -30,6 +30,7 @@ type Store interface {
 	PrepareMACDeviceEnrollment(context.Context, string, string, string, string) (model.DeviceEnrollment, error)
 	ListDeviceEnrollments(context.Context) ([]model.DeviceEnrollment, error)
 	RevokeDeviceEnrollment(context.Context, string) error
+	DeactivateDevice(context.Context, string, int64, string) (model.DeviceEnrollment, error)
 	RegisterApprovedDevice(context.Context, model.RegisterDeviceInput) (model.Device, string, error)
 	RegisterMACClaim(context.Context, model.RegisterDeviceInput) (model.Device, string, error)
 	GetDevice(context.Context, string) (model.Device, error)
@@ -72,17 +73,18 @@ type Store interface {
 }
 
 type MemoryStore struct {
-	mu                sync.RWMutex
-	devices           map[string]model.Device
-	deviceSecrets     map[string]string
-	deviceEnrollments map[string]memoryEnrollment
-	customerSecrets   map[string]string
-	rules             map[string]model.Rule
-	subscriptions     map[string]memorySubscription
-	commands          map[string]model.Command
-	subscriptionNodes map[string][]model.Node
-	customerNodePrefs map[string]map[string]string
-	nextNumber        int64
+	mu                   sync.RWMutex
+	devices              map[string]model.Device
+	deviceSecrets        map[string]string
+	deviceEnrollments    map[string]memoryEnrollment
+	revokedDeviceSecrets map[string]bool
+	customerSecrets      map[string]string
+	rules                map[string]model.Rule
+	subscriptions        map[string]memorySubscription
+	commands             map[string]model.Command
+	subscriptionNodes    map[string][]model.Node
+	customerNodePrefs    map[string]map[string]string
+	nextNumber           int64
 }
 
 type memorySubscription struct {
@@ -97,7 +99,7 @@ type memoryEnrollment struct {
 }
 
 func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{devices: map[string]model.Device{}, deviceSecrets: map[string]string{}, deviceEnrollments: map[string]memoryEnrollment{}, customerSecrets: map[string]string{}, rules: map[string]model.Rule{}, subscriptions: map[string]memorySubscription{}, subscriptionNodes: map[string][]model.Node{}, customerNodePrefs: map[string]map[string]string{}, commands: map[string]model.Command{}, nextNumber: 1}
+	return &MemoryStore{devices: map[string]model.Device{}, deviceSecrets: map[string]string{}, deviceEnrollments: map[string]memoryEnrollment{}, revokedDeviceSecrets: map[string]bool{}, customerSecrets: map[string]string{}, rules: map[string]model.Rule{}, subscriptions: map[string]memorySubscription{}, subscriptionNodes: map[string][]model.Node{}, customerNodePrefs: map[string]map[string]string{}, commands: map[string]model.Command{}, nextNumber: 1}
 }
 
 func (s *MemoryStore) RegisterDevice(_ context.Context, in model.RegisterDeviceInput) (model.Device, string, error) {
