@@ -1,7 +1,7 @@
 {
   "format_version": 1,
   "name": "ty-gateway-oec-test",
-  "status": "awaiting-oec-specific-base",
+  "status": "software-overlay-pilot-no-system-image",
   "device_family": "OnethingCloud OEC",
   "board_revision": "OEC L1.0 (user-reported PCB silkscreen)",
   "memory": "2GB",
@@ -29,7 +29,7 @@
   },
   "cloud": {
     "url": "https://oec.188811.xyz",
-    "registration": "admin-mac-allowlist-first-claim-source-not-deployed",
+    "registration": "admin-mac-allowlist-first-claim",
     "secret_storage": "/var/lib/ty-gateway/credentials.json"
   },
   "rescue": {
@@ -37,7 +37,7 @@
     "server_port": 7001,
     "purpose": "per-device FRP SSH maintenance; Agent starts FRPC after Cloud authorization",
     "remote_ports": "22000-22999",
-    "authentication": "device-and-port-derived credential over TLS; no shared token in image",
+    "authentication": "native per-device OIDC plus device/port authorization over TLS; no shared token in overlay",
     "address_source": "cloud-provided, never hardcoded in the image"
   },
   "candidate_base": {
