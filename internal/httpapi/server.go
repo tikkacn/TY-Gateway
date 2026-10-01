@@ -38,7 +38,7 @@ import (
 	"tygateway/internal/subscription"
 )
 
-//go:embed web/index.html web/portal.html web/enrollments.js
+//go:embed web/index.html web/portal.html web/enrollments.js web/deactivation.js
 var webFS embed.FS
 
 type Server struct {

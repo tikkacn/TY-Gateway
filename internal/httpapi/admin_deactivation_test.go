@@ -127,3 +127,20 @@ func TestAdminDeactivationRejectsCrossOriginSession(t *testing.T) {
 		t.Fatalf("cross-origin reset=%d", w.Code)
 	}
 }
+
+func TestAdminDeactivationAssetIsEmbedded(t *testing.T) {
+	srv := NewServer(store.NewMemoryStore(), "admin", []byte("0123456789abcdef0123456789abcdef"))
+	for _, path := range []string{"/admin/", "/assets/deactivation.js"} {
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("embedded route %s=%d", path, w.Code)
+		}
+		if path == "/admin/" && !strings.Contains(w.Body.String(), "/assets/deactivation.js") {
+			t.Fatal("admin page does not load deactivation UI")
+		}
+		if path == "/assets/deactivation.js" && (!strings.Contains(w.Body.String(), "/admin/devices/deactivate") || !strings.Contains(w.Body.String(), "btn secondary small")) {
+			t.Fatal("compiled UI asset incomplete")
+		}
+	}
+}
