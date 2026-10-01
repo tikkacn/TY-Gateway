@@ -188,7 +188,8 @@ def config_text(settings):
     # lines which could randomly bypass dae while the proxy switch is on.
     lines += ['servers-file='+str(DNS_SERVERS)]
     if plan['dhcp_enabled']:
-        lines += ['dhcp-range='+','.join([plan['pool_start'],plan['pool_end'],str(address.netmask),'12h']),
+        lines += ['dhcp-authoritative',
+                  'dhcp-range='+','.join([plan['pool_start'],plan['pool_end'],str(address.netmask),'12h']),
                   'dhcp-option=option:router,'+str(address.ip),
                   'dhcp-option=option:dns-server,'+str(address.ip),
                   'dhcp-leasefile='+str(ROOT/'dnsmasq.leases')]
