@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"tygateway/internal/model"
+	"tygateway/internal/nodeprobe"
 )
 
 func TestConfigBackupPreviewImportAndResetStayScoped(t *testing.T) {
@@ -32,7 +33,9 @@ func TestConfigBackupPreviewImportAndResetStayScoped(t *testing.T) {
 			requests <- request
 			switch request.Action {
 			case "customer":
-				if request.Method == "GET" {
+				if request.Path == "/speed-test" {
+					_, _ = conn.Write([]byte(`{"data":{"url":"http://cp.cloudflare.com","results":[],"running":false}}` + "\n"))
+				} else if request.Method == "GET" {
 					_, _ = conn.Write([]byte(`{"data":{"device":{"serial":"AABBCCDDEE01","config_version":3},"rules":[],"nodes":[],"categories":["AI"],"preferences":{},"private_key":"must-not-export"}}` + "\n"))
 				} else {
 					_, _ = conn.Write([]byte(`{"data":{"ok":true,"config_version":4}}` + "\n"))
@@ -55,6 +58,7 @@ func TestConfigBackupPreviewImportAndResetStayScoped(t *testing.T) {
 	}
 	draft := NetworkSettings{Plan: NetworkPlanInput{AddressCIDR: "10.23.42.212/24", Gateway: "10.23.42.1", DNSMode: "router"}, Reservations: []NetworkReservation{}}
 	backup := customerConfigBackup{Format: "ty-gateway-customer-config-v1", DeviceCode: "AABBCCDDEE01", ExportedAt: time.Now().UTC(), NetworkDraft: &draft, Rules: []model.CustomerSettingRule{{MatchType: "domain_suffix", MatchValue: "example.org", Action: "DIRECT"}}, Preferences: map[string]string{}}
+	backup.NodeCheck = &nodeprobe.Settings{URL: "https://8.8.8.8/ping"}
 	data, _ := json.Marshal(backup)
 	wrong := strings.Replace(string(data), "AABBCCDDEE01", "AABBCCDDEE02", 1)
 	rejected := call(t, s, http.MethodPost, "/api/config/preview", wrong, cookie, remote)
@@ -77,14 +81,21 @@ func TestConfigBackupPreviewImportAndResetStayScoped(t *testing.T) {
 		t.Fatalf("network draft was not safely saved: %#v %v", settings, err)
 	}
 	var posted bool
+	var checkPosted bool
 	for len(requests) > 0 {
 		request := <-requests
 		if request.Method == "POST" && request.Path == "/settings" {
 			posted = true
 		}
+		if request.Method == "POST" && request.Path == "/speed-test/settings" && strings.Contains(string(request.Body), "https://8.8.8.8/ping") {
+			checkPosted = true
+		}
 	}
 	if !posted {
 		t.Fatal("import did not request atomic customer settings replacement")
+	}
+	if !checkPosted {
+		t.Fatal("import did not restore the owned check URL")
 	}
 	exported := call(t, s, http.MethodGet, "/api/config/export", "", cookie, remote)
 	if exported.Code != http.StatusOK || strings.Contains(exported.Body.String(), "must-not-export") || strings.Contains(exported.Body.String(), "subscription") || !strings.Contains(exported.Body.String(), `"device_code":"AABBCCDDEE01"`) {
@@ -105,7 +116,8 @@ func TestConfigBackupPreviewImportAndResetStayScoped(t *testing.T) {
 }
 
 type localControlRequestForTest struct {
-	Action string `json:"action"`
-	Method string `json:"method"`
-	Path   string `json:"path"`
+	Action string          `json:"action"`
+	Method string          `json:"method"`
+	Path   string          `json:"path"`
+	Body   json.RawMessage `json:"body,omitempty"`
 }

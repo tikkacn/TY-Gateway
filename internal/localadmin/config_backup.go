@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"tygateway/internal/model"
+	"tygateway/internal/nodeprobe"
 	"tygateway/internal/rules"
 	"tygateway/internal/selection"
 )
@@ -27,6 +28,7 @@ type customerConfigBackup struct {
 	Rules                []model.CustomerSettingRule `json:"rules"`
 	Preferences          map[string]string           `json:"preferences"`
 	ProxyEnabledAtExport bool                        `json:"proxy_enabled_at_export"`
+	NodeCheck            *nodeprobe.Settings         `json:"node_check,omitempty"`
 }
 
 type backupCustomerState struct {
@@ -70,6 +72,13 @@ func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	s.networkMu.Unlock()
 	backup := customerConfigBackup{Format: "ty-gateway-customer-config-v1", DeviceCode: state.Device.Serial, ExportedAt: s.cfg.Now().UTC(), NetworkDraft: draft, Rules: []model.CustomerSettingRule{}, Preferences: map[string]string{}, ProxyEnabledAtExport: proxy.Enabled}
+	checkData, checkErr := s.customerCall(r.Context(), http.MethodGet, "/speed-test", nil)
+	var check nodeprobe.State
+	if checkErr != nil || json.Unmarshal(checkData, &check) != nil || nodeprobe.ValidateURL(check.URL) != nil {
+		writeJSON(w, http.StatusServiceUnavailable, apiError{Error: "无法读取测速设置，未生成不完整的备份。"})
+		return
+	}
+	backup.NodeCheck = &nodeprobe.Settings{URL: check.URL}
 	for _, rule := range state.Rules {
 		if rule.Source != "customer" || rule.SourceType != "user" {
 			continue
@@ -107,6 +116,9 @@ func (s *Server) checkedBackup(ctx context.Context, backup customerConfigBackup)
 		return state, nil, errors.New("配置格式或设备码不匹配；只能恢复这台设备导出的完整备份。")
 	}
 	var draft *NetworkSettings
+	if backup.NodeCheck != nil && nodeprobe.ValidateURL(backup.NodeCheck.URL) != nil {
+		return state, nil, errors.New("备份包含无效测速地址。")
+	}
 	if backup.NetworkDraft != nil {
 		validated, err := validateNetworkSettings(*backup.NetworkDraft)
 		if err != nil {
@@ -233,6 +245,13 @@ func (s *Server) importConfig(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, apiError{Error: err.Error()})
 		return
 	}
+	if backup.NodeCheck != nil {
+		body, _ := json.Marshal(backup.NodeCheck)
+		if _, err := s.customerCall(r.Context(), http.MethodPost, "/speed-test/settings", body); err != nil {
+			writeJSON(w, http.StatusConflict, apiError{Error: "用户规则已恢复，但测速地址未确认恢复：" + err.Error()})
+			return
+		}
+	}
 	if draft != nil {
 		now := s.cfg.Now().UTC()
 		draft.UpdatedAt = &now
@@ -278,6 +297,11 @@ func (s *Server) resetCustomerConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := s.replaceCloudCustomerSettings(r.Context(), state.Device.ConfigVersion, []model.CustomerSettingRule{}, map[string]string{}); err != nil {
 		writeJSON(w, http.StatusConflict, apiError{Error: "代理已关闭，但云端用户设置未确认清除：" + err.Error()})
+		return
+	}
+	checkBody, _ := json.Marshal(nodeprobe.Settings{URL: nodeprobe.DefaultURL})
+	if _, err := s.customerCall(r.Context(), http.MethodPost, "/speed-test/settings", checkBody); err != nil {
+		writeJSON(w, http.StatusConflict, apiError{Error: "用户规则已清除，但测速地址重置失败：" + err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "proxy_enabled": false, "message": "已关闭代理并清除用户自定义规则、节点偏好和临时模式；网络入口、本地密码、设备注册和管理员规则均保留。"})

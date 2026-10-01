@@ -26,9 +26,10 @@ import (
 	"tygateway/internal/hostnet"
 	"tygateway/internal/identity"
 	"tygateway/internal/model"
+	"tygateway/internal/nodeprobe"
 )
 
-const defaultVersion = "0.8.5"
+const defaultVersion = "0.8.6"
 
 const (
 	localProxyFile = "local-proxy.json"
@@ -74,13 +75,14 @@ type commandEnvelope struct {
 }
 
 type daeApplyResult struct {
-	Status        string               `json:"status"`
-	NodeCount     int                  `json:"node_count"`
-	Nodes         []model.CustomerNode `json:"nodes,omitempty"`
-	PolicyStatus  string               `json:"policy_status,omitempty"`
-	ErrorCode     string               `json:"error_code,omitempty"`
-	RollbackToken string               `json:"rollback_token,omitempty"`
-	ServiceActive bool                 `json:"service_active"`
+	Status        string                  `json:"status"`
+	NodeCount     int                     `json:"node_count"`
+	Nodes         []model.CustomerNode    `json:"nodes,omitempty"`
+	PolicyStatus  string                  `json:"policy_status,omitempty"`
+	ErrorCode     string                  `json:"error_code,omitempty"`
+	RollbackToken string                  `json:"rollback_token,omitempty"`
+	ServiceActive bool                    `json:"service_active"`
+	Observations  []nodeprobe.Observation `json:"observations,omitempty"`
 }
 
 type daeApplier interface {
@@ -97,6 +99,7 @@ type daeApplyRequest struct {
 	Policy             *model.DaePolicy       `json:"policy,omitempty"`
 	RollbackToken      string                 `json:"rollback_token,omitempty"`
 	ServiceAction      string                 `json:"service_action,omitempty"`
+	Probe              *nodeprobe.Request     `json:"probe,omitempty"`
 }
 
 type agent struct {
@@ -129,6 +132,9 @@ type agent struct {
 	policyReady              bool
 	lastReportedInventory    string
 	syncNow                  chan struct{}
+	probeMu                  sync.Mutex
+	probeRunning             bool
+	lastProbeStarted         time.Time
 }
 
 type localControlRequest struct {
@@ -589,6 +595,7 @@ func (a *agent) fetchConfigLocked(ctx context.Context, forceSubscription, rechec
 		a.logger.Printf("cloud proxy request is staged; local Dae routing safety gate is off")
 	}
 	policy := makeDaePolicy(a.server, a.interfaceName, config, a.allowDaeProxy)
+	policy.TCPCheckURL = a.localCheckTarget()
 	if a.allowDaeProxy {
 		a.stateMu.RLock()
 		localEnabled := a.localProxyOn
@@ -1041,6 +1048,7 @@ func (a *agent) applyCachedPolicy(ctx context.Context, enabled bool) localContro
 		return state
 	}
 	policy := makeDaePolicy(a.server, a.interfaceName, config, false)
+	policy.TCPCheckURL = a.localCheckTarget()
 	policy.Rules = localDaeRules(config, enabled)
 	policy.SubscriptionPresent = snapshot.SubscriptionID != ""
 	policy.ProxyEnabled = enabled && snapshot.SubscriptionID != ""
@@ -1136,6 +1144,9 @@ func (a *agent) serveLocalControlConn(conn net.Conn) {
 func (a *agent) localCustomerRequest(ctx context.Context, request localControlRequest) localControlResponse {
 	method := strings.ToUpper(strings.TrimSpace(request.Method))
 	path := strings.TrimSpace(request.Path)
+	if path == "/speed-test" || path == "/speed-test/settings" || path == "/speed-test/run" {
+		return a.localNodeProbe(ctx, method, path, request.Body)
+	}
 	allowed := map[string]bool{
 		"POST /rule-package":    true,
 		"GET /me":               true,
@@ -1224,7 +1235,7 @@ func safeDaeErrorCode(code string) bool {
 		"dae_config_unavailable", "dae_config_write_failed", "dae_validation_failed",
 		"dae_service_inactive", "dae_reload_failed", "dae_native_count_unavailable",
 		"dae_native_zero_nodes", "dae_policy_invalid", "dae_policy_staged",
-		"dae_policy_reload_failed", "dae_subscription_required":
+		"dae_policy_reload_failed", "dae_subscription_required", "dae_probe_restore_failed":
 		return true
 	default:
 		return false

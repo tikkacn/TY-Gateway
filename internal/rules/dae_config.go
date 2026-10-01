@@ -8,9 +8,11 @@ import (
 	"net/netip"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"tygateway/internal/model"
+	"tygateway/internal/nodeprobe"
 	"tygateway/internal/selection"
 )
 
@@ -19,6 +21,11 @@ import (
 // subscription file. Input strings are parsed and allow-listed before they can
 // enter the privileged helper's configuration.
 func RenderDaeManaged(policy model.DaePolicy) (string, error) {
+	if policy.TCPCheckURL != "" {
+		if err := nodeprobe.ValidateCompiled(policy.TCPCheckURL); err != nil {
+			return "", err
+		}
+	}
 	profile := normalizeProfile(policy.Profile)
 	if policy.ProxyEnabled && !policy.SubscriptionPresent {
 		return "", errors.New("proxy requires a bound subscription")
@@ -105,7 +112,11 @@ func RenderDaeManaged(policy model.DaePolicy) (string, error) {
 		// same physical NIC; this block is emitted only after the local safety
 		// gate permits proxy routing. Use dae's documented default dial mode;
 		// domain++ cannot rescue traffic already classified as direct.
-		fmt.Fprintf(&b, "global {\n  lan_interface: %s\n  wan_interface: auto\n  dial_mode: domain\n}\n", policy.Interface)
+		fmt.Fprintf(&b, "global {\n  lan_interface: %s\n  wan_interface: auto\n  dial_mode: domain\n", policy.Interface)
+		if policy.TCPCheckURL != "" {
+			fmt.Fprintf(&b, "  tcp_check_url: %s\n  tcp_check_http_method: HEAD\n", strconv.Quote(policy.TCPCheckURL))
+		}
+		b.WriteString("}\n")
 	}
 	if policy.SubscriptionPresent {
 		b.WriteString("subscription {\n  ty_gateway: 'file://ty-gateway/subscription.raw'\n}\n")

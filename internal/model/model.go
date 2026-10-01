@@ -212,6 +212,7 @@ type DaePolicy struct {
 	RecheckIPv4Only     bool           `json:"recheck_ipv4_only,omitempty"` // Legacy wire name: reapply the subscription node-name filter; never rendered into dae rules.
 	Interface           string         `json:"interface,omitempty"`
 	DNSBind             string         `json:"dns_bind,omitempty"`
+	TCPCheckURL         string         `json:"tcp_check_url,omitempty"` // Local public URL plus pinned IPv4; not a cloud preference.
 	SubscriptionPresent bool           `json:"subscription_present"`
 	Rules               []CompiledRule `json:"rules"`
 	Nodes               []Node         `json:"nodes"`

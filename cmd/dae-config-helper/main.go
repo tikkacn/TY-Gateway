@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"tygateway/internal/model"
+	"tygateway/internal/nodeprobe"
 	"tygateway/internal/rules"
 	"tygateway/internal/subscription"
 )
@@ -39,16 +40,18 @@ type applyRequest struct {
 	Policy             *model.DaePolicy       `json:"policy,omitempty"`
 	RollbackToken      string                 `json:"rollback_token,omitempty"`
 	ServiceAction      string                 `json:"service_action,omitempty"`
+	Probe              *nodeprobe.Request     `json:"probe,omitempty"`
 }
 
 type applyResponse struct {
-	Status        string               `json:"status"`
-	NodeCount     int                  `json:"node_count"`
-	Nodes         []model.CustomerNode `json:"nodes,omitempty"`
-	PolicyStatus  string               `json:"policy_status,omitempty"`
-	ErrorCode     string               `json:"error_code,omitempty"`
-	RollbackToken string               `json:"rollback_token,omitempty"`
-	ServiceActive bool                 `json:"service_active"`
+	Status        string                  `json:"status"`
+	NodeCount     int                     `json:"node_count"`
+	Nodes         []model.CustomerNode    `json:"nodes,omitempty"`
+	PolicyStatus  string                  `json:"policy_status,omitempty"`
+	ErrorCode     string                  `json:"error_code,omitempty"`
+	RollbackToken string                  `json:"rollback_token,omitempty"`
+	ServiceActive bool                    `json:"service_active"`
+	Observations  []nodeprobe.Observation `json:"observations,omitempty"`
 }
 
 type snapshot struct {
@@ -75,6 +78,11 @@ func main() {
 func serve(path string) error {
 	if os.Geteuid() != 0 {
 		return errors.New("must run as root")
+	}
+	// Recover a short diagnostic window after a power loss/helper crash, before
+	// accepting config writes. Never leave verbose traffic logging enabled.
+	if err := restoreProbeLog(probeEnvironmentDefault()); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return errors.New("cannot prepare helper socket")
@@ -125,6 +133,20 @@ func writeResponse(w io.Writer, value applyResponse) {
 }
 
 func apply(request applyRequest) applyResponse {
+	if request.Probe != nil {
+		if request.ServiceAction != "probe" || request.ManageSubscription || request.Subscription != nil || request.Policy != nil || request.RollbackToken != "" {
+			return applyResponse{Status: "error", ErrorCode: "invalid_request"}
+		}
+		applyMu.Lock()
+		defer applyMu.Unlock()
+		ctx, cancel := context.WithTimeout(context.Background(), 95*time.Second)
+		defer cancel()
+		observations, err := runNodeProbe(ctx, *request.Probe, probeEnvironmentDefault())
+		if err != nil {
+			return applyResponse{Status: "error", ErrorCode: "dae_probe_failed"}
+		}
+		return applyResponse{Status: "ok", Observations: observations}
+	}
 	// Status checks are read-only and must not queue behind a long config
 	// validation or DAE reload. The Agent uses a short deadline for this probe.
 	if request.ServiceAction == "status" {
@@ -138,6 +160,9 @@ func apply(request applyRequest) applyResponse {
 	}
 	applyMu.Lock()
 	defer applyMu.Unlock()
+	if err := restoreProbeLog(probeEnvironmentDefault()); err != nil {
+		return applyResponse{Status: "error", ErrorCode: "dae_probe_restore_failed"}
+	}
 	if request.ServiceAction != "" {
 		if request.ManageSubscription || request.Subscription != nil || request.Policy != nil || request.RollbackToken != "" {
 			return applyResponse{Status: "error", ErrorCode: "invalid_request"}

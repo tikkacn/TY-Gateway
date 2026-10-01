@@ -31,6 +31,9 @@
 <style>
 .software-panel{grid-column:1/-1}.software-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:17px}.software-detail{padding:11px 13px;border:1px solid var(--line);border-radius:9px;background:#fbfcff}.software-detail span{display:block;color:var(--muted);font-size:12px}.software-detail strong{display:block;margin-top:4px;font-size:15px}.software-panel .actions{margin-top:17px}@media(max-width:700px){.software-details{grid-template-columns:1fr}}
 </style>
+<style>
+.node-latency{font-size:11px;font-weight:750;line-height:1.4}.latency-good{color:var(--good)}.latency-warn{color:var(--warn)}.latency-bad{color:var(--bad)}.latency-unknown{color:var(--muted)}.speed-panel{padding:12px;border:1px solid var(--line);border-radius:9px;background:#fafbfc;margin-top:13px}.speed-fields{display:grid;grid-template-columns:180px minmax(0,1fr);gap:10px}.speed-panel .field{margin-top:9px}.speed-panel .field input,.speed-panel .field select{height:36px;font-size:12px;padding:6px 9px}.speed-panel .actions{margin-top:10px}.speed-panel .btn{min-height:34px;padding:6px 10px;font-size:12px}.speed-panel .notice{margin-top:9px;font-size:12px;padding:9px 10px}@media(max-width:700px){.speed-fields{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
 <header class="top"><div class="wrap bar"><div class="brand"><div class="mark">TY</div><div>TY Gateway<small>LOCAL DEVICE</small></div></div><span id="networkBadge" class="badge">正在检查设备</span></div></header>
@@ -41,6 +44,15 @@
   const app=document.getElementById('appView');
   if(!app)return;
   let state=null,editingRule='';
+  function latencyPresentation(result,now=Date.now()){
+    if(!result||result.status==='unknown')return {text:'未测速',color:'unknown'};
+    const stamp=Date.parse(result.checked_at);
+    if(!Number.isFinite(stamp)||now-stamp>300000||stamp-now>60000)return {text:'结果已过期',color:'unknown'};
+    if(result.status==='failed')return {text:'连接失败',color:'bad'};
+    const ms=result.latency_ms;
+    if(result.status!=='ok'||typeof ms!=='number'||!Number.isFinite(ms)||ms<0)return {text:'未测速',color:'unknown'};
+    return {text:ms===0?'<1 ms':ms+' ms',color:ms<150?'good':ms<=300?'warn':'bad'};
+  }
   const categoryLabels={China:'国内', 'HK-Broker':'港澳证券（HK-Broker）',AI:'AI 服务（OpenAI / Claude / Gemini）',YouTube:'YouTube',TikTok:'TikTok',Netflix:'Netflix',GitHub:'GitHub',Google:'Google',Microsoft:'Microsoft',Apple:'Apple',Telegram:'Telegram',Final:'其他流量（Final 兜底）'};
   const el=(tag,props={},text='')=>{const node=document.createElement(tag);Object.assign(node,props);if(text)node.textContent=text;return node};
   async function api(path,method='GET',body){
@@ -73,6 +85,19 @@
     const saveActions=el('div',{className:'actions routing-actions'});saveActions.append(nSave);
     const nodeSync=el('div',{className:'sync-feedback routing-sync'});
     nodes.append(catSection,nodeSync);
+    const speedPanel=el('section',{className:'speed-panel',id:'customer-speed-test'}),speedFields=el('div',{className:'speed-fields'}),speedPreset=el('select',{id:'speed-preset'}),speedURL=el('input',{id:'speed-url',type:'url',maxLength:2048,placeholder:'https://example.com/generate_204',autocomplete:'off'}),speedSave=el('button',{type:'button',className:'btn secondary'},'保存测速地址'),speedRun=el('button',{type:'button',className:'btn'},'开始测速'),speedReload=el('button',{type:'button',className:'btn secondary'},'刷新测速结果'),speedStatus=el('div',{className:'notice',role:'status','id':'speed-status'},'等待加载测速设置。');
+    for(const [url,label] of [['http://cp.cloudflare.com','Cloudflare（默认）'],['https://www.gstatic.com/generate_204','Google'],['http://www.msftconnecttest.com/connecttest.txt','Microsoft'],['custom','自定义地址']])addOption(speedPreset,url,label);
+    const presetLabel=el('label',{className:'field'}),urlLabel=el('label',{className:'field'});presetLabel.append(el('span',{},'测速地址'),speedPreset);urlLabel.append(el('span',{},'自定义 HTTP / HTTPS 地址'),speedURL);speedFields.append(presetLabel,urlLabel);
+    const speedActions=el('div',{className:'actions'});speedActions.append(speedSave,speedRun,speedReload);
+    speedPanel.append(el('span',{className:'routing-label'},'节点延迟测速'),el('p',{className:'help'},'经过代理节点的 HTTP 延迟，不是下载带宽。绿：<150 ms；黄：150–300 ms；红：>300 ms 或连接失败。结果 5 分钟后变灰。'),speedFields,speedActions,speedStatus);nodes.prepend(speedPanel);
+    let speedState={url:'',results:[]},speedBusy=false,speedLoaded=false;
+    function presetChanged(){speedURL.disabled=speedPreset.value!=='custom';urlLabel.classList.toggle('hidden',speedPreset.value!=='custom');}speedPreset.addEventListener('change',presetChanged);presetChanged();
+    function speedButtons(){speedSave.disabled=speedBusy;speedRun.disabled=speedBusy||!!speedState.running;speedReload.disabled=speedBusy;speedPreset.disabled=speedBusy;speedURL.disabled=speedBusy||speedPreset.value!=='custom'}
+    function speedSummary(){const known=(speedState.results||[]).filter(r=>r.status!=='unknown').length,at=Date.parse(speedState.checked_at);speedStatus.textContent=speedState.running?'dae 正在测速，请稍候；最长约 1 分钟。':Number.isFinite(at)?'最近测速：'+new Date(at).toLocaleString()+'；'+known+' 个节点有观测结果。未观察到结果的节点显示“未测速”，不会记为 0 ms。':'地址已保存；开启科学上网且 dae 正常应用后，可手动开始测速。';speedStatus.className='notice';speedButtons()}
+    async function loadSpeed(editFields=false){try{speedState=await api('/speed-test');if(editFields||!speedLoaded){const url=speedState.url||'http://cp.cloudflare.com';speedPreset.value=[...speedPreset.options].some(o=>o.value===url)?url:'custom';speedURL.value=url;presetChanged();speedLoaded=true}speedSummary();actualNodeList()}catch(e){speedStatus.textContent=e.message;speedStatus.className='notice warn'}}
+    speedReload.addEventListener('click',()=>loadSpeed());
+    speedSave.addEventListener('click',async()=>{speedBusy=true;speedButtons();speedStatus.textContent='正在保存并应用测速地址…';try{const url=speedPreset.value==='custom'?speedURL.value.trim():speedPreset.value;speedState=await api('/speed-test/settings','POST',{url});speedLoaded=true;speedSummary();actualNodeList();speedStatus.textContent='测速地址已保存。旧结果已清除；后续 dae 健康检查使用此地址。'}catch(e){speedStatus.textContent=e.message;speedStatus.className='notice warn'}finally{speedBusy=false;speedButtons()}});
+    speedRun.addEventListener('click',async()=>{const draft=speedPreset.value==='custom'?speedURL.value.trim():speedPreset.value;if(draft!==speedState.url){speedStatus.textContent='测速地址有未保存的修改，请先保存地址。';speedStatus.className='notice warn';return}speedBusy=true;speedButtons();speedStatus.className='notice';speedStatus.textContent='正在读取 dae 的真实 HTTP 延迟（约 5–40 秒）。不会自动开启代理，结束后恢复原日志级别。';try{speedState=await api('/speed-test/run','POST',{});speedSummary();actualNodeList()}catch(e){speedStatus.textContent=e.message;speedStatus.className='notice warn'}finally{speedBusy=false;speedButtons()}});
     const nodeControls=[nSave];
     function preferenceLabel(value){if(value==='@direct')return '直连';if(value==='@proxy')return '全体节点自动选择';if(value?.startsWith('@region:'))return ({HK:'香港',TW:'台湾',SG:'新加坡',JP:'日本',KR:'韩国',US:'美国',MY:'马来西亚',DE:'德国',GB:'英国'})[value.slice(8)]+'节点自动选择';if(value?.startsWith('@failover:')){const ids=value.slice(10).split(',').filter(Boolean),primary=(state?.nodes||[]).find(n=>n.id===ids[0]);return ids.length<2?'主备待选择':'主备：'+(primary?.name||'节点已不可用')+' + '+(ids.length-1)+' 个备用'}if(!value)return '跟随方案默认';const found=(state?.nodes||[]).find(item=>item.id===value);return found?'固定：'+(found.name||found.id):'节点已不可用'}
     function updateDraftFeedback(){if(pendingNodeSave){nFeedback.textContent='云端已保存，正在等待设备应用；确认前继续使用上一版。';nFeedback.className='notice warn';return}const changed=(state?.categories||[]).some(category=>(draftPreferences[category]??state?.preferences?.[category]??'')!==(state?.preferences?.[category]||''));nFeedback.textContent=changed?'有尚未保存的分类设置；切换分类不会丢弃这些更改。':'';nFeedback.className=changed?'notice warn':'error'}
@@ -89,6 +114,7 @@
         const selected=editMode==='failover'?backupDraft[backupSlot]===item.id:draftPreference===item.id;
         const button=el('button',{type:'button',className:'choice-button actual-node-button'+(selected?' active':'')});button.setAttribute('aria-pressed',String(selected));
         button.append(el('span',{className:'choice-title'},item.name||item.id));if(item.region)button.append(el('span',{className:'choice-meta'},item.region+' · '+(editMode==='failover'?'点选为'+['主用','备用 1','备用 2'][backupSlot]:'点选为固定节点')));
+        const measurement=(speedState.results||[]).find(r=>r.id===item.id),view=latencyPresentation(measurement),latency=el('span',{className:'node-latency latency-'+view.color},view.text);latency.title='HTTP 延迟 · '+(speedState.url||'尚未加载地址')+(measurement?.checked_at?' · '+new Date(measurement.checked_at).toLocaleString():'');button.append(latency);
         button.addEventListener('click',()=>{
           if(editMode==='failover'){
             if(backupDraft.includes(item.id)&&backupDraft[backupSlot]!==item.id){nFeedback.textContent='同一个节点不能同时担任主用和备用。';nFeedback.className='notice warn';return}
@@ -183,10 +209,11 @@
       catch(e){state=null;unavailable('加载失败，请点击下方重试');sync.textContent=e.message;sync.className='notice warn';retry.classList.remove('hidden')}
       finally{loading=false;retry.disabled=false}
     }
-    window.tyCustomerRefresh=refresh;
+    const customerRefresh=refresh;window.tyCustomerRefresh=async()=>{await customerRefresh();await loadSpeed()};
     const sync=el('div',{id:'customer-sync-status',className:'notice',role:'status'},'登录后加载规则和节点。');
     const retry=el('button',{type:'button',className:'btn secondary compact hidden'},'重新加载');retry.addEventListener('click',refresh);
-    const syncBox=el('div',{className:'sync-feedback'});syncBox.append(sync,retry);nodeSync.append(syncBox);unavailable('等待加载');refresh();
+    const syncBox=el('div',{className:'sync-feedback'});syncBox.append(sync,retry);nodeSync.append(syncBox);unavailable('等待加载');refresh();if(!app.classList.contains('hidden'))loadSpeed();
+    setInterval(()=>{if(!app.classList.contains('hidden')&&!speedBusy)actualNodeList()},30000);
   }
   const observer=new MutationObserver(()=>{build()});observer.observe(app,{childList:true,subtree:true});build();
   let wasHidden=app.classList.contains('hidden');

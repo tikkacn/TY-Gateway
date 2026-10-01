@@ -26,7 +26,7 @@ func (s *Server) customerRules(w http.ResponseWriter, r *http.Request) {
 		path = "/me"
 	}
 	switch path {
-	case "/rules", "/rules/delete", "/override", "/node-preference", "/action", "/rule-package":
+	case "/rules", "/rules/delete", "/override", "/node-preference", "/action", "/rule-package", "/speed-test", "/speed-test/settings", "/speed-test/run":
 	default:
 		writeJSON(w, http.StatusNotFound, apiError{Error: "customer operation not found"})
 		return
