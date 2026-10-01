@@ -1,0 +1,2 @@
+# Linux service scripts and pinned PEM checksums must not change on Windows.
+* text=auto eol=lf
