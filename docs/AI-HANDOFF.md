@@ -12,6 +12,8 @@ v0.8.9：LAN DNS 动态交接与 DAE 旧内核入口兼容处理已加入
 
 ## 源码与发布
 
+v0.8.9 Pilot 已发布，包由干净提交 `4f885561c05659c8ad368d6335676c2dc9f808d9` 构建，标签指向同一提交。软件包 SHA-256 为 `40f5a235c165ddcea503b897ffc143f7af8bde26534a46e12cc8a805918c7193`，四个公开资产读回与签名均通过。Pilot 索引提交 `b8523220aa037753ddc3d4216cffac33e8ae37c7`，公开读取已确认 0.8.9。后续纯文档更新不改变已发布的二进制或标签。
+
 本仓库为 `tikkacn/TY-Gateway`。此前 `release/` 忽略规则误排除了 `internal/release/`：已发布二进制含有模块，但克隆源码不完整。本轮修复为根目录忽略，并纳入升级验签、下载、安全解包源码及测试。
 
 Agent 默认版本及 Windows/Linux 设备构建脚本统一为 0.8.9。发布包须由干净提交构建，记录对应提交；不得从旧 `work/oec-dist` 默认目录混用历史二进制。构建 ARM64 Agent、local UI、DAE helper、release-fetch，加固定官方 FRPC；签名私钥只在 Cloud 主机上使用，不下载进开发目录。
