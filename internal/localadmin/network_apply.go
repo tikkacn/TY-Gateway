@@ -18,6 +18,8 @@ type networkApplyResult struct {
 	Deadline         int64            `json:"deadline,omitempty"`
 	Message          string           `json:"message,omitempty"`
 	Error            string           `json:"error,omitempty"`
+	FailureStage     string           `json:"failure_stage,omitempty"`
+	FailureCode      string           `json:"failure_code,omitempty"`
 	DHCPActive       bool             `json:"dhcp_active"`
 	DNSActive        bool             `json:"lan_dns_active"`
 	ServiceState     string           `json:"service_state,omitempty"`

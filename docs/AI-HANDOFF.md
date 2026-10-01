@@ -1,12 +1,12 @@
 # TY Gateway 开发交接（公开版）
 
-更新：2026-10-01；本轮候选 v0.8.6 Pilot。以 [功能清单](FEATURES.md) 区分代码实现与实机验收，不得把历史讨论当作已完成功能。
+更新：2026-10-01；本轮候选 v0.8.7 Pilot。以 [功能清单](FEATURES.md) 区分代码实现与实机验收，不得把历史讨论当作已完成功能。
 
 ## 源码与发布
 
 本仓库为 `tikkacn/TY-Gateway`。此前 `release/` 忽略规则误排除了 `internal/release/`：已发布二进制含有模块，但克隆源码不完整。本轮修复为根目录忽略，并纳入升级验签、下载、安全解包源码及测试。
 
-Agent 默认版本及设备构建脚本统一为 0.8.6。发布包须由干净提交构建，记录对应提交；不得从旧 `work/oec-dist` 默认目录混用历史二进制。构建 ARM64 Agent、local UI、DAE helper、release-fetch，加固定官方 FRPC；签名私钥只在 Cloud 主机上使用，不下载进开发目录。
+Agent 默认版本及设备构建脚本统一为 0.8.7。发布包须由干净提交构建，记录对应提交；不得从旧 `work/oec-dist` 默认目录混用历史二进制。构建 ARM64 Agent、local UI、DAE helper、release-fetch，加固定官方 FRPC；签名私钥只在 Cloud 主机上使用，不下载进开发目录。
 
 `scripts/prepare-oec-bootstrap.py` 对比独立验签器与签名包内验签器，生成固定版本 bootstrap。本轮 GitHub-only Pilot；不改 R2、Guide 或 soft.uutec.net。DAE v2.1.1 官方 ARM64 包由设备下载并检查固定 SHA-256，不随 TY Gateway Release 再分发。
 
@@ -40,6 +40,8 @@ FRP 原生 OIDC + 设备端口授权插件已部署。控制端口 7001，映射
 
 ## 本轮只做针对性检查
 
-验证升级模块测试、版本默认值、后台统计及干净克隆构建；检查软件包、公钥、验签器、签名和 bootstrap 一致。避免扩大测试浪费时间；真实路由和首装由用户配合。
+当前任务是 OEC 管理 IPv4 切换：2026-10-01 日志中新连接成功激活约 0.17 秒后由 helper 主动回退，不是三分钟超时；旧代码隐藏失败原因，不能断言具体检查的根因。v0.8.7 改为 UUID/实际 IPv4 的有界等待核验，记录阶段/代码和 root-only 详情，保留确认及回退。只运行地址/本地 API 针对性检查，用户升级后在原网段验证 .164 → .9；不重刷、不重置设备、不变更 R2。见 [地址切换说明](NETWORK-ADDRESS.md)。
+
+用户取消过“自动从 DHCP 池排除自身地址”方案，不要重新加入。OEC 固定 IP 要置于池外；修改地址时保留主路由 DHCP，确认后再单独切换 DHCP/DNS。检查软件包、公钥、验签器、签名和 bootstrap 一致；避免扩大测试浪费时间。
 
 先读 [实机验收](OEC-PILOT-ACCEPTANCE.md)。每次失败保留现场并定位对应模块，不宣称源码通过等于实机通过。测速颜色/自定义 URL 已实现，见 [测速说明](NODE-LATENCY.md)；真实出口观察仍未完成。旧阶段包未经用户要求不得删除。

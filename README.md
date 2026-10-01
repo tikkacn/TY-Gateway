@@ -2,9 +2,9 @@
 
 TY Gateway 是面向 ARM64 单网口旁路由设备的管理与分流软件。本仓库保存完整的可公开源码，并分发签名安装/升级包；不包含设备配置、订阅凭据或运维工作目录。
 
-## 当前测试版本：v0.8.6 Pilot
+## 当前测试版本：v0.8.7 Pilot
 
-本轮补齐本地逐节点延迟的绿黄红显示、手动测速和自定义测速地址；地址真正用于 dae 健康检查，保存到本机并纳入配置备份。保留 v0.8.5 的完整升级验签源码及订阅统计修复。完成状态见 [功能清单](docs/FEATURES.md)。Pilot 是实机测试版，不是商业稳定版。
+本轮修正管理 IPv4 切换的生效核验：使用连接 UUID 和实际地址，允许短暂状态同步等待，失败记录具体阶段和诊断码，保留新地址登录确认及超时回退。此前新连接激活后立即回退，旧日志不能确定具体失败检查；修复仍需实机验证，见 [管理地址说明](docs/NETWORK-ADDRESS.md)。保留 v0.8.6 的测速颜色、自定义地址及此前完整功能。完成状态见 [功能清单](docs/FEATURES.md)。Pilot 是实机测试版，不是商业稳定版。
 
 上一轮用户确认自动注册和公网 FRP SSH 握手达到测试要求。两台旧测试设备的云端身份、SN、MAC 预登记及 FRP 映射已按用户要求清空；新一轮需重新登记设备真实 MAC，再使用全新 Armbian 测试。设备编号从 1、SSH 映射端口从 22000 重新分配。
 
@@ -15,7 +15,7 @@ TY Gateway 是面向 ARM64 单网口旁路由设备的管理与分流软件。�
 在支持的 ARM64 Armbian 上以 root 或 sudo 执行：
 
 ```bash
-curl -fL --retry 3 https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.6/bootstrap-oec.sh -o /tmp/ty-gateway-bootstrap-v0.8.6.sh && sudo bash /tmp/ty-gateway-bootstrap-v0.8.6.sh
+curl -fL --retry 3 https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.7/bootstrap-oec.sh -o /tmp/ty-gateway-bootstrap-v0.8.7.sh && sudo bash /tmp/ty-gateway-bootstrap-v0.8.7.sh
 ```
 
 安装器自动安装运行依赖、固定版本的官方 DAE、设备程序和服务。联网后 Agent 自动认领预登记 MAC、保存专属身份、获取配置并建立 FRP；无需逐台激活文件或在公开脚本里写入 FRP 密码。FRPS 与 FRPC 共用控制端口 **7001**，设备 SSH 映射池为 **22000–22999**。
@@ -26,6 +26,14 @@ curl -fL --retry 3 https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.
 
 ## 更新、配置与权限
 
+已安装设备不要重跑首装 bootstrap。此次 Pilot 修复可在旧地址 SSH 执行签名更新器：
+
+```bash
+sudo /usr/local/libexec/ty-gateway-update apply-online --channel pilot --expect-version 0.8.7
+```
+
+更新保留设备注册、网络及用户配置，不会主动切换管理 IP。也可在“更新与备份”选择测试版，上传同版 `release.json` 和软件包；用户页面的在线按钮只检查稳定版。
+
 本地测速位于“代理与规则 → 网站分流”，支持预设/自定义地址，逐节点显示真实 HTTP 延迟（不是带宽）；没有结果不记零。需 dae 已应用开启状态，测速不会自动开代理。短时诊断结束后恢复原日志级别，短时系统日志按系统策略保留。详见 [测速说明](docs/NODE-LATENCY.md)。
 
 - 本地“更新与备份”提供在线升级及签名离线包上传：`release.json` 与 `ty-gateway-oec-overlay.tar.gz`。用户只能升级；管理员可发起升级及受控回退。
@@ -33,7 +41,7 @@ curl -fL --retry 3 https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.
 - 重置用户设置会关闭代理、清除用户分流偏好和自定义规则；保留注册身份、管理员基础方案、网络入口及本地密码。这不是擦盘或完整 Linux 恢复出厂。
 - 正常客户设置优先使用；管理员仅在用户求助时明确重置，不在常规同步时主动覆盖用户规则。救援/内网直连保护不向客户开放修改。
 - 正常升级保留设备注册。彻底重刷且删除本地凭据后，已认领 MAC 不能凭新的随机密钥自动接管，需管理员重置认领。
-- 管理员“设备中心 → 查看详情 → 设备反激活”可撤销旧身份，让 MAC 恢复待激活并释放 FRP 登记。与禁用、重置分流分开，不擦除本机系统，不重排其他编号；详见 [反激活说明](docs/DEVICE-DEACTIVATION.md)。设备包仍使用 v0.8.6。
+- 管理员“设备中心 → 查看详情 → 设备反激活”可撤销旧身份，让 MAC 恢复待激活并释放 FRP 登记。与禁用、重置分流分开，不擦除本机系统，不重排其他编号；详见 [反激活说明](docs/DEVICE-DEACTIVATION.md)。该云端功能与 v0.8.6 及后续设备包兼容。
 
 本地安装资产模式为 `bootstrap-oec.sh --package-dir <目录>`；首装系统依赖仍需 apt 网络源，不能称为完全离线首装。已安装设备的签名离线升级不依赖 GitHub 网络。
 

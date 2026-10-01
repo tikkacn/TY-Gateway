@@ -6,6 +6,7 @@ transaction; dae is outside this protocol. The previous NM profile is retained.
 """
 import ipaddress
 import json
+import logging
 import os
 import select
 import socket
@@ -19,6 +20,21 @@ import ty_gateway_lan as lan
 from pathlib import Path
 
 PENDING = {"preparing", "queued", "applying", "awaiting_login", "rollback_failed"}
+LOG = logging.getLogger('ty-gateway-network')
+
+
+class NetworkOperationError(RuntimeError):
+    def __init__(self, code, message, details):
+        super().__init__(message)
+        self.code, self.details = code, details
+
+
+def failure_details(exc):
+    # Never dump settings, environment variables, or arbitrary exception text.
+    if isinstance(exc, NetworkOperationError):
+        return exc.code, exc.details
+    return 'network_operation_failed', {'error_type': type(exc).__name__,
+                                         'errno': getattr(exc, 'errno', None)}
 
 
 def valid_plan(request):
@@ -52,11 +68,20 @@ class NetworkManager:
     def __init__(self, interface):
         self.interface = interface
 
-    def run(self, *args):
-        p = subprocess.run(["/usr/bin/nmcli", "--wait", "20", *args], capture_output=True,
-                           text=True, timeout=25, env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"})
+    def run(self, *args, timeout=25):
+        try:
+            p = subprocess.run(["/usr/bin/nmcli", "--colors", "no", "--escape", "no", "--wait", "20", *args],
+                               capture_output=True, text=True, timeout=timeout,
+                               env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"})
+        except subprocess.TimeoutExpired:
+            raise NetworkOperationError('nmcli_timeout', '网络管理器状态读取或操作超时。',
+                                        {'operation': list(args), 'timeout_seconds': timeout}) from None
         if p.returncode:
-            raise RuntimeError("网络管理器未能完成操作；已尝试恢复原配置。")
+            # This helper only calls fixed network operations with addresses and
+            # profile identifiers; it never invokes --show-secrets or passes keys.
+            raise NetworkOperationError('nmcli_failed', '网络管理器未能完成操作。',
+                                        {'operation': list(args), 'exit_code': p.returncode,
+                                         'stderr': p.stderr.strip()[:500]})
         return p.stdout.strip()
 
     def manager(self):
@@ -107,27 +132,56 @@ class NetworkManager:
                  "connection.autoconnect", "no", "ipv4.method", "manual", "ipv4.addresses", tx["address_cidr"],
                  "ipv4.gateway", tx["gateway"], "ipv4.dns", ",".join(tx["dns"] or [tx["gateway"]]),
                  "ipv4.ignore-auto-dns", "yes")
+        tx['candidate_uuid'] = str(uuid.UUID(self.run('-g', 'connection.uuid', 'connection', 'show', 'id', tx['candidate'])))
 
     def activate(self, tx):
-        self.run("connection", "up", "id", tx["candidate"], "ifname", self.interface)
+        self.run("connection", "up", "uuid", tx["candidate_uuid"], "ifname", self.interface)
 
-    def verify_target(self, tx):
-        active = self.run("-g", "GENERAL.CONNECTION", "device", "show", self.interface)
-        addresses = self.run("-g", "IP4.ADDRESS", "device", "show", self.interface).splitlines()
-        if active != tx["candidate"] or addresses != [tx["address_cidr"]]:
-            raise ValueError("新地址尚未就绪，不能确认配置。")
+    def verify_target(self, tx, timeout=12):
+        # nmcli activation completion and its device snapshot need not become
+        # visible together. Compare immutable UUID + parsed IPv4 state, not a
+        # connection's display name or one immediate, raw string snapshot.
+        expected_uuid = str(uuid.UUID(tx['candidate_uuid']))
+        expected_address = ipaddress.IPv4Interface(tx['address_cidr'])
+        budget = min(timeout, max(0, tx.get('deadline', time.time() + timeout + 1) - time.time() - 1))
+        end = time.monotonic() + budget
+        observed = {}
+        while time.monotonic() < end:
+            def read(field):
+                remaining = end - time.monotonic()
+                if remaining <= 0:
+                    raise NetworkOperationError('nmcli_timeout', '地址核验等待超时。', {'field': field})
+                return self.run('-g', field, 'device', 'show', self.interface, timeout=min(3, remaining))
+            try:
+                active = read('GENERAL.CON-UUID')
+                raw_addresses = read('IP4.ADDRESS').splitlines()
+                addresses = [ipaddress.IPv4Interface(x.strip()) for x in raw_addresses if x.strip()]
+                active_after = read('GENERAL.CON-UUID')
+                observed = {'active_uuid': active, 'active_uuid_after': active_after,
+                            'addresses': [str(x) for x in addresses],
+                            'expected_uuid': expected_uuid, 'expected_address': str(expected_address)}
+                if active == active_after == expected_uuid and addresses == [expected_address]:
+                    return
+            except NetworkOperationError as exc:
+                observed = {'read_error': exc.code, 'details': exc.details}
+            except ValueError:
+                observed = {'read_error': 'invalid_ipv4_state'}
+            remaining = end - time.monotonic()
+            if remaining > 0:
+                time.sleep(min(0.25, remaining))
+        raise NetworkOperationError('new_address_not_ready', '新地址未能通过生效核验。', observed)
 
     def commit(self, tx):
         self.verify_target(tx)
         # Persist the candidate while autoconnect is still disabled. Until destroy,
         # NM can independently restore the old active profile. Recovery journal
         # handles a crash after destroy but before final commit.
-        self.run("connection", "modify", "id", tx["candidate"], "connection.autoconnect", "no")
+        self.run("connection", "modify", "uuid", tx["candidate_uuid"], "connection.autoconnect", "no")
         self.manager().CheckpointDestroy(tx["checkpoint"])
         priority = min(999, tx["priority"] + 1)
         if priority <= tx["priority"]:
             raise ValueError("原网络连接优先级过高，无法安全固定新配置。")
-        self.run("connection", "modify", "id", tx["candidate"], "connection.autoconnect-priority", str(priority),
+        self.run("connection", "modify", "uuid", tx["candidate_uuid"], "connection.autoconnect-priority", str(priority),
                  "connection.autoconnect", "yes")
 
     def restore(self, tx):
@@ -181,13 +235,21 @@ class Controller:
             os.close(fd)
 
     def status(self):
-        return {k: self.tx[k] for k in ("phase", "target_ip", "old_ip", "deadline", "message") if k in self.tx}
+        return {k: self.tx[k] for k in ("phase", "target_ip", "old_ip", "deadline", "message", "failure_stage", "failure_code") if k in self.tx}
+
+    def record_failure(self, stage, exc):
+        code, details = failure_details(exc)
+        self.tx.update(failure_stage=stage, failure_code=code, failure_details=details)
+        LOG.error('network_apply_failure %s', json.dumps({'stage': stage, 'code': code, 'details': details}, ensure_ascii=False))
 
     def rollback(self, message):
         try:
             self.backend.restore(self.tx)
             self.tx.update(phase="rolled_back", message=message)
-        except Exception:
+        except Exception as exc:
+            code, details = failure_details(exc)
+            self.tx.update(rollback_failure_code=code, rollback_failure_details=details)
+            LOG.error('network_rollback_failure %s', json.dumps({'code': code, 'details': details}, ensure_ascii=False))
             self.tx.update(phase="rollback_failed", message="自动恢复尚未完成，请联系管理员；请勿再次修改地址。")
         self.persist()
 
@@ -216,7 +278,8 @@ class Controller:
                 self.backend.prepare(self.tx)
                 self.tx["phase"] = "queued"
                 self.persist()
-            except Exception:
+            except Exception as exc:
+                self.record_failure('prepare', exc)
                 self.rollback("准备失败，已恢复原网络配置。")
                 raise RuntimeError("地址变更准备失败，未完成应用。") from None
             txid = self.tx["candidate"]
@@ -228,14 +291,18 @@ class Controller:
         with self.lock:
             if self.tx.get("candidate") != txid or self.tx["phase"] != "queued":
                 return
+            stage = 'activate'
             try:
                 self.tx["phase"] = "applying"
                 self.persist()
                 self.backend.activate(self.tx)
+                stage = 'verify_target'
                 self.backend.verify_target(self.tx)
+                stage = 'save_awaiting_login'
                 self.tx.update(phase="awaiting_login", message="请在新地址重新登录，登录后保留配置；超时自动恢复。")
                 self.persist()
-            except Exception:
+            except Exception as exc:
+                self.record_failure(stage, exc)
                 self.rollback("地址切换失败，已恢复原网络配置。")
 
     def expire(self, txid):
@@ -265,7 +332,8 @@ class Controller:
                     self.backend.commit(self.tx)
                     self.tx.update(phase="committed", message="新地址已生效并保留，DHCP/DNS 服务未启动。")
                     self.persist()
-                except Exception:
+                except Exception as exc:
+                    self.record_failure('confirm', exc)
                     self.rollback("确认未完成，已恢复原网络配置。")
                     raise RuntimeError("确认新地址失败，正在恢复原配置。") from None
                 return self.status()
@@ -273,6 +341,7 @@ class Controller:
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format='%(name)s: %(levelname)s %(message)s')
     if os.geteuid() != 0:
         raise RuntimeError("root service required")
     interface = lan.interface_name()

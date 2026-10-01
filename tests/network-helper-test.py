@@ -25,7 +25,7 @@ class Fake:
     def snapshot(self): return dict(original='original',old_address='198.19.247.10/24',dns=['1.1.1.1'],priority=0)
     def probe(self,*args): self.calls.append('probe')
     def checkpoint(self,seconds): self.calls.append('checkpoint'); return '/checkpoint/1'
-    def prepare(self,tx): self.calls.append('prepare')
+    def prepare(self,tx): self.calls.append('prepare'); tx['candidate_uuid']='2bc8ca16-6edf-4e78-8051-980376dca258'
     def activate(self,tx):
         self.calls.append('activate')
         if self.fail: raise RuntimeError('failure')
@@ -76,6 +76,19 @@ class Tests(unittest.TestCase):
     @unittest.skipUnless(os.name == 'posix', 'directory fsync behavior is Linux/POSIX specific')
     def test_activate_failure(self):
         self.fake.fail=True; self.start(); self.assertEqual(self.c.tx['phase'],'rolled_back')
+        self.assertEqual(self.c.status()['failure_stage'],'activate')
+        self.assertEqual(self.c.status()['failure_code'],'network_operation_failed')
+    @unittest.skipUnless(os.name == 'posix', 'directory fsync behavior is Linux/POSIX specific')
+    def test_verify_failure_records_reason_and_rolls_back(self):
+        def fail(tx):
+            raise module.NetworkOperationError('new_address_not_ready', 'not ready', {'addresses':['198.19.247.10/24']})
+        self.fake.verify_target=fail
+        self.start()
+        self.assertEqual(self.c.tx['phase'],'rolled_back')
+        self.assertEqual(self.c.tx['failure_stage'],'verify_target')
+        self.assertEqual(self.c.tx['failure_code'],'new_address_not_ready')
+        self.assertEqual(self.c.tx['failure_details']['addresses'],['198.19.247.10/24'])
+        self.assertNotIn('commit',self.fake.calls)
     def test_validation_before_mutation(self):
         for address in ['127.0.0.1/24','198.19.247.0/24','198.19.247.255/24','198.19.247.20/32','198.19.248.20/24']:
             with self.assertRaises(ValueError): self.c.start(dict(PLAN,address_cidr=address))

@@ -274,7 +274,7 @@ function showApp(state){ensureProxyControl();detectedGateway=state.default_gatew
 async function checkAddressApply(){
  $('saveNetwork').textContent='保存并应用配置';refreshLANStatus();
  const form=$('planAddress').closest('form');let status=$('addressApplyStatus');if(!status){status=document.createElement('div');status.id='addressApplyStatus';status.className='notice';status.setAttribute('role','status');form.prepend(status)}
- try{let state=await api('/network/apply');if(state.phase==='awaiting_login'){status.textContent='正在确认您已通过新地址登录…';state=await api('/network/apply/confirm','POST',{})}status.textContent=state.phase==='committed'?'管理地址已确认。下面的 DHCP/DNS 开关可单独保存并应用。':state.message||'修改 IP 后请先使用“仅应用管理地址”，再配置 DHCP/DNS。';status.className='notice '+(state.phase==='committed'?'good':'warn');if(['queued','applying'].includes(state.phase)){setTimeout(checkAddressApply,2000)}}catch(e){status.className='notice warn';status.textContent='地址状态：'+e.message}
+ try{let state=await api('/network/apply');if(state.phase==='awaiting_login'){status.textContent='正在确认您已通过新地址登录…';state=await api('/network/apply/confirm','POST',{})}status.textContent=(state.phase==='committed'?'管理地址已确认。下面的 DHCP/DNS 开关可单独保存并应用。':state.message||'修改 IP 后请先使用“仅应用管理地址”，再配置 DHCP/DNS。')+(state.failure_code?'（诊断：'+state.failure_stage+' / '+state.failure_code+'）':'');status.className='notice '+(state.phase==='committed'?'good':'warn');if(['queued','applying'].includes(state.phase)){setTimeout(checkAddressApply,2000)}}catch(e){status.className='notice warn';status.textContent='地址状态：'+e.message}
 }
 let lanStatusTimer;
 async function refreshLANStatus(){
@@ -303,7 +303,7 @@ function addNetworkPreview(){
  const form=document.createElement('form');form.noValidate=true;
  function field(labelText,id,placeholder){const label=document.createElement('label');label.className='field';const title=document.createElement('span');title.textContent=labelText;const input=document.createElement('input');input.id=id;input.type='text';input.placeholder=placeholder;input.autocomplete='off';label.append(title,input);return label}
  form.append(field('OEC 固定管理地址（含网段）','planAddress','例如 10.23.42.10/24'));
- const clientGatewayHelp=document.createElement('p');clientGatewayHelp.className='help';clientGatewayHelp.textContent='OEC 提供 DHCP 时，将自动把自身 IP 作为客户端网关和 DNS。';form.append(clientGatewayHelp);
+ const clientGatewayHelp=document.createElement('p');clientGatewayHelp.className='help';clientGatewayHelp.textContent='修改管理地址时请保持主路由 DHCP 开启；在新地址重新登录并确认后，再关闭主路由 DHCP、启用 OEC DHCP。OEC 固定地址必须位于 DHCP 地址池之外。';form.append(clientGatewayHelp);
  form.append(field('OEC 自身的上游网关（主路由 LAN 地址）','planGateway',detectedGateway?'当前检测到：'+detectedGateway:'请输入主路由器的 LAN 地址'));
  const upstreamGatewayHelp=document.createElement('p');upstreamGatewayHelp.className='help';upstreamGatewayHelp.textContent='这是 OEC 自己访问外网时使用的上游网关，不是客户端网关。';form.append(upstreamGatewayHelp);
  const addressButton=document.createElement('button');addressButton.type='submit';addressButton.className='btn secondary';addressButton.textContent='仅应用管理地址';form.append(addressButton);

@@ -37,6 +37,16 @@ func TestAddressApplySessionAndDestination(t *testing.T) {
 					return
 				}
 				result := networkApplyResult{Phase: "queued", TargetIP: "10.23.42.10"}
+				if request["action"] == "status" {
+					// Detailed network observations stay in the root-only journal;
+					// the UI needs only the stage and stable diagnostic code.
+					_ = json.NewEncoder(c).Encode(map[string]any{
+						"phase": "rolled_back", "failure_stage": "verify_target",
+						"failure_code":    "new_address_not_ready",
+						"failure_details": map[string]any{"active_uuid": "private-fixture"},
+					})
+					return
+				}
 				if request["action"] == "confirm" {
 					if request["local_ip"] != "10.23.42.10" {
 						result.Error = "wrong destination"
@@ -52,6 +62,13 @@ func TestAddressApplySessionAndDestination(t *testing.T) {
 	s.cfg.NetworkSocket = socket
 	setup := call(t, s, "POST", "/api/setup", `{"password":"correct horse battery staple"}`, nil, "10.23.42.2:1000")
 	cookie := setup.Result().Cookies()[0]
+	status := call(t, s, "GET", "/api/network/apply", "", cookie, "10.23.42.2:1000")
+	if status.Code != 200 || !strings.Contains(status.Body.String(), `"failure_code":"new_address_not_ready"`) || !strings.Contains(status.Body.String(), `"failure_stage":"verify_target"`) {
+		t.Fatal(status.Code, status.Body.String())
+	}
+	if strings.Contains(status.Body.String(), "failure_details") || strings.Contains(status.Body.String(), "private-fixture") {
+		t.Fatal("private helper observations leaked into API response")
+	}
 	plan := `{"address_cidr":"10.23.42.10/24","gateway":"10.23.42.1","dns_mode":"router"}`
 	for _, path := range []string{"/api/network/apply", "/api/network/apply/confirm"} {
 		if response := call(t, s, "POST", path, plan, nil, "10.23.42.2:1000"); response.Code != 401 {
