@@ -56,6 +56,10 @@ func TestAdminSupportResetLeavesRegistrationAndBaseline(t *testing.T) {
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"reload_queued":true`) {
 		t.Fatalf("support reset=%d %s", w.Code, w.Body.String())
 	}
+	commands, err := st.PollCommands(ctx, d.ID)
+	if err != nil || len(commands) != 1 || !strings.Contains(string(commands[0].Payload), `"reset_local_preferences":true`) {
+		t.Fatal("support reset did not explicitly request clearing local preferences")
+	}
 	rules, err := st.ListCustomerRules(ctx, d.ID)
 	if err != nil || len(rules) != 0 {
 		t.Fatalf("customer choices remain: %#v %v", rules, err)

@@ -38,7 +38,7 @@ func TestRenderDaeManagedEnablesSelectiveRulesAndNodeGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(rendered, "# proxy_enabled: true") || !strings.Contains(rendered, "fallback: ty_gateway_proxy") || !strings.Contains(rendered, "lan_interface: eth0") || !strings.Contains(rendered, "wan_interface: auto") || !strings.Contains(rendered, "dial_mode: domain") || strings.Contains(rendered, "dial_mode: domain++") || strings.Contains(rendered, "sniffing_timeout:") {
+	if !strings.Contains(rendered, "# proxy_enabled: true") || !strings.Contains(rendered, "fallback: ty_gateway_proxy") || !strings.Contains(rendered, "lan_interface: eth0") || strings.Contains(rendered, "wan_interface:") || !strings.Contains(rendered, "dial_mode: domain") || strings.Contains(rendered, "dial_mode: domain++") || strings.Contains(rendered, "sniffing_timeout:") {
 		t.Fatalf("enabled profile policy does not use the documented proxy fallback: %s", rendered)
 	}
 	if !strings.Contains(rendered, "dns {\n  ipversion_prefer: 4\n  bind: '10.23.42.10:5353'") {
@@ -46,7 +46,7 @@ func TestRenderDaeManagedEnablesSelectiveRulesAndNodeGroup(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "googledns: 'https://dns.google/dns-query'") ||
 		!strings.Contains(rendered, "domain(suffix: 'dns.google') -> ty_gateway_proxy") ||
-		!strings.Contains(rendered, "upstream(googledns) -> accept") ||
+		!strings.Contains(rendered, "upstream(control_dns, googledns) -> accept") ||
 		!strings.Contains(rendered, "domain(geosite:cn) -> direct") {
 		t.Fatalf("enabled profile did not protect non-CN DNS through the proxy: %s", rendered)
 	}
@@ -61,6 +61,36 @@ func TestRenderDaeManagedEnablesSelectiveRulesAndNodeGroup(t *testing.T) {
 	}
 	if strings.Contains(rendered, "subscription?token=") || strings.Contains(rendered, "password=") || strings.Contains(rendered, "token=") {
 		t.Fatalf("renderer leaked a subscription secret: %s", rendered)
+	}
+}
+
+func TestDaeControlDNSIsIndependentOfProxyDNS(t *testing.T) {
+	for _, profile := range []string{ProfileGFW, "managed_meta"} {
+		config, err := RenderDaeManaged(model.DaePolicy{
+			Profile: profile, ProxyEnabled: true, SubscriptionPresent: true,
+			Interface: "eth0", DNSBind: "192.168.0.9",
+			DirectHosts: []string{"Control.Example.test", "81.68.132.124"},
+			Rules:       []model.CompiledRule{{RuleID: "override", Match: "domain(control.example.test)", Action: "PROXY"}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{
+			"disable_waiting_network: true",
+			"lan_interface: eth0",
+			"control_dns: 'tcp+udp://223.5.5.5:53'",
+			"qname(full: 'control.example.test') -> control_dns",
+		} {
+			if !strings.Contains(config, want) {
+				t.Fatalf("%s missing %q", profile, want)
+			}
+		}
+		if strings.Contains(config, "wan_interface:") || strings.Contains(config, "pname(") || strings.Contains(config, "qname(full: '81.68.132.124')") {
+			t.Fatal("LAN DNS observation was bypassed or IP was used as a DNS name")
+		}
+		if profile == "managed_meta" && strings.Contains(config, "geosite:cn") {
+			t.Fatal("managed package depends on an unrelated local geosite database")
+		}
 	}
 }
 

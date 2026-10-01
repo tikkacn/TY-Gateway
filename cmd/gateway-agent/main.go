@@ -29,7 +29,7 @@ import (
 	"tygateway/internal/nodeprobe"
 )
 
-const defaultVersion = "0.8.7"
+const defaultVersion = "0.8.8"
 
 const (
 	localProxyFile = "local-proxy.json"
@@ -159,7 +159,7 @@ type localControlResponse struct {
 }
 
 func main() {
-	server := flag.String("server", envOr("TY_CLOUD_URL", "https://oec.188811.xyz"), "TY Cloud base URL")
+	server := flag.String("server", envOr("TY_CLOUD_URL", "https://oec.188811.xyz:8443"), "TY Cloud base URL")
 	stateDir := flag.String("state-dir", envOr("TY_AGENT_STATE_DIR", "/var/lib/ty-gateway"), "private agent state directory")
 	interfaceName := flag.String("interface", envOr("TY_AGENT_INTERFACE", ""), "network interface used for the device MAC")
 	interval := flag.Duration("interval", durationEnv("TY_AGENT_INTERVAL", 30*time.Second), "heartbeat and command polling interval")
@@ -219,8 +219,8 @@ func main() {
 	} else if err := a.cleanupConsumedActivation(); err != nil {
 		a.logger.Printf("used activation file could not be removed; cleanup will retry on restart")
 	}
-	if a.state.Server != a.server {
-		fatal("saved credentials belong to a different cloud server")
+	if err := a.reconcileCredentialServer(); err != nil {
+		fatal("could not reconcile saved cloud address: %v", err)
 	}
 	if err := a.loadLocalProxy(); err != nil {
 		fatal("could not load local proxy setting")
@@ -515,6 +515,10 @@ func (a *agent) fetchConfigWithOptions(ctx context.Context, forceSubscription, r
 }
 
 func (a *agent) fetchConfigLocked(ctx context.Context, forceSubscription, recheckIPv4 bool) error {
+	return a.fetchConfigLockedWithReset(ctx, forceSubscription, recheckIPv4, false)
+}
+
+func (a *agent) fetchConfigLockedWithReset(ctx context.Context, forceSubscription, recheckIPv4, resetLocalPreferences bool, resetCommandIDs ...string) error {
 	started := time.Now()
 	data, status, err := a.signedRequest(ctx, http.MethodGet, "/api/v1/device/"+url.PathEscape(a.stateValue().DeviceID)+"/config", nil)
 	if err != nil {
@@ -546,6 +550,18 @@ func (a *agent) fetchConfigLocked(ctx context.Context, forceSubscription, rechec
 		return err
 	}
 	previous, previousErr := a.loadAppliedSnapshot()
+	localPreferences, localRevision := previous.LocalPreferences, previous.LocalRevision
+	resetCommandID := previous.LastResetCommandID
+	if len(resetCommandIDs) > 0 && resetCommandIDs[0] != "" {
+		if resetCommandIDs[0] == previous.LastResetCommandID {
+			resetLocalPreferences = false
+		}
+		resetCommandID = resetCommandIDs[0]
+	}
+	if resetLocalPreferences && len(localPreferences) > 0 {
+		localPreferences = nil
+		localRevision++
+	}
 	boundSubscriptionID := ""
 	if config.DaeSubscription != nil {
 		boundSubscriptionID = config.DaeSubscription.ID
@@ -589,6 +605,7 @@ func (a *agent) fetchConfigLocked(ctx context.Context, forceSubscription, rechec
 		return cause
 	}
 	subscriptionChanged := config.DaeSubscriptionManaged && a.shouldApplyDaeSubscription(config.DaeSubscription, forceSubscription)
+	config = overlayLocalPreferences(config, localPreferences)
 	config.Rules = safeCompiledNodeActions(config.Rules, validatedNodes, subscriptionChanged)
 	config.BaseRules = safeCompiledNodeActions(config.BaseRules, validatedNodes, subscriptionChanged)
 	if !a.allowDaeProxy && config.Device.CustomerOverrideAction == "PROXY" && config.Device.CustomerOverrideUntil != nil && config.Device.CustomerOverrideUntil.After(config.ServerTime) {
@@ -712,7 +729,11 @@ func (a *agent) fetchConfigLocked(ctx context.Context, forceSubscription, rechec
 	if err != nil {
 		return failUpdate(err)
 	}
-	if err := a.saveAppliedSnapshot(config, cloudCustomer, boundSubscriptionID); err != nil {
+	cloudCustomer, err = stateWithLocalPreferences(cloudCustomer, config.Preferences, localRevision)
+	if err != nil {
+		return failUpdate(err)
+	}
+	if err := a.saveSnapshotWithPreferences(config, cloudCustomer, boundSubscriptionID, localPreferences, localRevision, resetCommandID); err != nil {
 		if a.logger != nil {
 			a.logger.Printf("config_sync stage=snapshot result=write_failed")
 		}
@@ -1147,6 +1168,9 @@ func (a *agent) localCustomerRequest(ctx context.Context, request localControlRe
 	if path == "/speed-test" || path == "/speed-test/settings" || path == "/speed-test/run" {
 		return a.localNodeProbe(ctx, method, path, request.Body)
 	}
+	if method == http.MethodPost && path == "/node-preference" {
+		return a.saveLocalNodePreference(ctx, request.Body)
+	}
 	allowed := map[string]bool{
 		"POST /rule-package":    true,
 		"GET /me":               true,
@@ -1192,7 +1216,10 @@ func (a *agent) localCustomerRequest(ctx context.Context, request localControlRe
 	endpoint := "/api/v1/device/" + url.PathEscape(state.DeviceID) + "/customer" + path
 	data, status, err := a.signedRequest(ctx, method, endpoint, body)
 	if err != nil {
-		return localControlResponse{Error: "云端客户配置暂不可用，请稍后重试。"}
+		if safeSyncError(err) == "timeout" {
+			return localControlResponse{Error: "连接云端超时，未确认保存；本机保留上次已应用配置，请检查设备 DNS/网络后重试。"}
+		}
+		return localControlResponse{Error: "设备暂时无法连接云端，未确认保存；本机保留上次已应用配置。"}
 	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
 		var apiErr struct {
@@ -1206,15 +1233,11 @@ func (a *agent) localCustomerRequest(ctx context.Context, request localControlRe
 	if len(data) > 256<<10 || !json.Valid(data) {
 		return localControlResponse{Error: "云端客户配置响应无效。"}
 	}
-	if method == http.MethodPost && path == "/node-preference" {
-		select {
-		case a.syncNow <- struct{}{}:
-		default:
-		}
-		return localControlResponse{Data: json.RawMessage(data)}
-	}
 	if method == http.MethodPost && path != "/action" {
-		if err := a.fetchConfigWithOptions(ctx, false, false); err != nil {
+		a.configMu.Lock()
+		err := a.fetchConfigLockedWithReset(ctx, false, false, path == "/settings")
+		a.configMu.Unlock()
+		if err != nil {
 			return localControlResponse{Error: "云端已保存，但设备未确认应用；本地记录仍保留上一版，请核对设备状态后重试。"}
 		}
 	}
@@ -1361,7 +1384,20 @@ func (a *agent) pollCommands(ctx context.Context) error {
 		result := "failed"
 		switch command.Command {
 		case "reload_config":
-			if err := a.fetchConfig(commandCtx); err == nil {
+			var reset struct {
+				ResetLocalPreferences bool `json:"reset_local_preferences"`
+			}
+			if command.Payload != "" {
+				_ = json.Unmarshal([]byte(command.Payload), &reset)
+			}
+			a.configMu.Lock()
+			resetID := ""
+			if reset.ResetLocalPreferences {
+				resetID = command.ID
+			}
+			err := a.fetchConfigLockedWithReset(commandCtx, false, false, reset.ResetLocalPreferences, resetID)
+			a.configMu.Unlock()
+			if err == nil {
 				result = "ok"
 			}
 		case "refresh_subscription":
@@ -1528,6 +1564,34 @@ func (a *agent) saveState() error {
 		return err
 	}
 	return writePrivateFile(filepath.Join(a.stateDir, "credentials.json"), b)
+}
+
+// The stock HTTPS endpoint moved ports on the same operator-controlled host.
+// Only this exact one-way migration is permitted: an arbitrary server change
+// must never transfer existing device credentials to a different destination.
+func (a *agent) reconcileCredentialServer() error {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+	if a.state.Server == a.server {
+		return nil
+	}
+	if a.state.Server != "https://oec.188811.xyz" || a.server != "https://oec.188811.xyz:8443" {
+		return errors.New("saved credentials belong to a different cloud server")
+	}
+	next := a.state
+	next.Server = a.server
+	data, err := json.MarshalIndent(next, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := writePrivateFile(filepath.Join(a.stateDir, "credentials.json"), data); err != nil {
+		return errors.New("could not persist stock HTTPS port migration")
+	}
+	a.state = next
+	if a.logger != nil {
+		a.logger.Print("stock device HTTPS port migrated to 8443; device identity unchanged")
+	}
+	return nil
 }
 
 func (a *agent) persistRescuePort(port int) error {

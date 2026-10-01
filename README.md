@@ -2,9 +2,9 @@
 
 TY Gateway 是面向 ARM64 单网口旁路由设备的管理与分流软件。本仓库保存完整的可公开源码，并分发签名安装/升级包；不包含设备配置、订阅凭据或运维工作目录。
 
-## 当前测试版本：v0.8.7 Pilot
+## 当前测试版本：v0.8.8 Pilot
 
-本轮修正管理 IPv4 切换的生效核验：使用连接 UUID 和实际地址，允许短暂状态同步等待，失败记录具体阶段和诊断码，保留新地址登录确认及超时回退。此前新连接激活后立即回退，旧日志不能确定具体失败检查；修复仍需实机验证，见 [管理地址说明](docs/NETWORK-ADDRESS.md)。保留 v0.8.6 的测速颜色、自定义地址及此前完整功能。完成状态见 [功能清单](docs/FEATURES.md)。Pilot 是实机测试版，不是商业稳定版。
+本轮修复设备 HTTPS 通道、设备本机 DNS 与分类节点本地保存。管理员网页仍使用不带端口的原地址；设备内部使用 8443。已有设备的 stock 地址和凭据地址受控迁移，不重新注册。分类选择经本机 DAE 确认后原子保存，常规云端同步保留选择，管理员明确重置才清除本地覆盖。详见 [运行与本地保存说明](docs/LOCAL-PREFERENCES.md)。保留此前管理地址切换、测速、配置备份和升级功能。完成状态见 [功能清单](docs/FEATURES.md)。Pilot 是实机测试版，不是商业稳定版。
 
 上一轮用户确认自动注册和公网 FRP SSH 握手达到测试要求。两台旧测试设备的云端身份、SN、MAC 预登记及 FRP 映射已按用户要求清空；新一轮需重新登记设备真实 MAC，再使用全新 Armbian 测试。设备编号从 1、SSH 映射端口从 22000 重新分配。
 
@@ -15,7 +15,7 @@ TY Gateway 是面向 ARM64 单网口旁路由设备的管理与分流软件。�
 在支持的 ARM64 Armbian 上以 root 或 sudo 执行：
 
 ```bash
-curl -fL --retry 3 https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.7/bootstrap-oec.sh -o /tmp/ty-gateway-bootstrap-v0.8.7.sh && sudo bash /tmp/ty-gateway-bootstrap-v0.8.7.sh
+curl -fL --retry 3 https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.8/bootstrap-oec.sh -o /tmp/ty-gateway-bootstrap-v0.8.8.sh && sudo bash /tmp/ty-gateway-bootstrap-v0.8.8.sh
 ```
 
 安装器自动安装运行依赖、固定版本的官方 DAE、设备程序和服务。联网后 Agent 自动认领预登记 MAC、保存专属身份、获取配置并建立 FRP；无需逐台激活文件或在公开脚本里写入 FRP 密码。FRPS 与 FRPC 共用控制端口 **7001**，设备 SSH 映射池为 **22000–22999**。
@@ -29,7 +29,7 @@ curl -fL --retry 3 https://github.com/tikkacn/TY-Gateway/releases/download/v0.8.
 已安装设备不要重跑首装 bootstrap。此次 Pilot 修复可在旧地址 SSH 执行签名更新器：
 
 ```bash
-sudo /usr/local/libexec/ty-gateway-update apply-online --channel pilot --expect-version 0.8.7
+sudo /usr/local/libexec/ty-gateway-update apply-online --channel pilot --expect-version 0.8.8
 ```
 
 更新保留设备注册、网络及用户配置，不会主动切换管理 IP。也可在“更新与备份”选择测试版，上传同版 `release.json` 和软件包；用户页面的在线按钮只检查稳定版。

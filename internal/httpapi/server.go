@@ -782,6 +782,19 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request, id string) {
 	compiled := s.Engine.CompilePolicy(activePolicy(d, rs, nodes, prefs))
 	basePolicy := rules.Policy(d, rs, nil, nodes, false)
 	base := s.Engine.CompilePolicy(rules.ApplyNodePreferences(basePolicy, prefs, nodes))
+	// Retain each provider's action before customer preferences are applied.
+	// A device can then restore "follow scheme default" without a cloud write.
+	baseline := s.Engine.CompilePolicy(rules.Policy(d, rs, nil, nodes, false))
+	defaults := make(map[string]string, len(baseline))
+	for _, rule := range baseline {
+		defaults[rule.RuleID] = rule.Action
+	}
+	for i := range base {
+		base[i].DefaultAction = defaults[base[i].RuleID]
+	}
+	for i := range compiled {
+		compiled[i].DefaultAction = defaults[compiled[i].RuleID]
+	}
 	for i := range nodes {
 		nodes[i].Params = nil
 	}

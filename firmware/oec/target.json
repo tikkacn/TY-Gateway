@@ -28,7 +28,7 @@
     "transparent_takeover": "not-in-test-image"
   },
   "cloud": {
-    "url": "https://oec.188811.xyz",
+    "url": "https://oec.188811.xyz:8443",
     "registration": "admin-mac-allowlist-first-claim",
     "secret_storage": "/var/lib/ty-gateway/credentials.json"
   },

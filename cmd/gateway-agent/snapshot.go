@@ -18,9 +18,12 @@ import (
 // for rules, selectable nodes, and the policy that the Agent can reapply.
 // It never contains the provider URL, proxy endpoint, or proxy credentials.
 type appliedSnapshot struct {
-	SubscriptionID string             `json:"subscription_id,omitempty"`
-	Config         model.DeviceConfig `json:"config"`
-	Customer       json.RawMessage    `json:"customer"`
+	SubscriptionID     string             `json:"subscription_id,omitempty"`
+	Config             model.DeviceConfig `json:"config"`
+	Customer           json.RawMessage    `json:"customer"`
+	LocalPreferences   map[string]string  `json:"local_preferences,omitempty"`
+	LocalRevision      int64              `json:"local_revision,omitempty"`
+	LastResetCommandID string             `json:"last_reset_command_id,omitempty"`
 }
 
 func (a *agent) snapshotPath() string { return filepath.Join(a.stateDir, "applied-snapshot.json") }
@@ -31,13 +34,18 @@ func (a *agent) loadAppliedSnapshot() (appliedSnapshot, error) {
 		return appliedSnapshot{}, err
 	}
 	var snapshot appliedSnapshot
-	if json.Unmarshal(data, &snapshot) != nil || snapshot.Config.Device.ID != a.stateValue().DeviceID || snapshot.Config.Profile == "" || !json.Valid(snapshot.Customer) {
+	if json.Unmarshal(data, &snapshot) != nil || snapshot.Config.Device.ID != a.stateValue().DeviceID || snapshot.Config.Profile == "" || !json.Valid(snapshot.Customer) || snapshot.LocalRevision < 0 || len(snapshot.LocalPreferences) > 32 {
 		return appliedSnapshot{}, errors.New("invalid local applied snapshot")
 	}
 	return snapshot, nil
 }
 
 func (a *agent) saveAppliedSnapshot(config model.DeviceConfig, customer []byte, subscriptionID string) error {
+	previous, _ := a.loadAppliedSnapshot()
+	return a.saveSnapshotWithPreferences(config, customer, subscriptionID, previous.LocalPreferences, previous.LocalRevision)
+}
+
+func (a *agent) saveSnapshotWithPreferences(config model.DeviceConfig, customer []byte, subscriptionID string, preferences map[string]string, revision int64, resetCommandIDs ...string) error {
 	config.DaeSubscription = nil
 	if subscriptionID != "" && len(config.Nodes) == 0 || subscriptionID == "" && len(config.Nodes) != 0 {
 		return errors.New("validated node inventory is missing")
@@ -49,7 +57,15 @@ func (a *agent) saveAppliedSnapshot(config model.DeviceConfig, customer []byte, 
 	if json.Unmarshal(customer, &safe) != nil || safe.Device.ID != config.Device.ID || safe.Device.ConfigVersion != config.ConfigVersion || len(safe.Nodes) != len(config.Nodes) {
 		return errors.New("customer state and policy do not match")
 	}
-	data, err := json.Marshal(appliedSnapshot{SubscriptionID: subscriptionID, Config: config, Customer: customer})
+	if len(preferences) > 32 || revision < 0 {
+		return errors.New("invalid local preferences")
+	}
+	previous, _ := a.loadAppliedSnapshot()
+	resetCommandID := previous.LastResetCommandID
+	if len(resetCommandIDs) > 0 {
+		resetCommandID = resetCommandIDs[0]
+	}
+	data, err := json.Marshal(appliedSnapshot{SubscriptionID: subscriptionID, Config: config, Customer: customer, LocalPreferences: preferences, LocalRevision: revision, LastResetCommandID: resetCommandID})
 	if err != nil {
 		return err
 	}

@@ -100,7 +100,8 @@ $manifest = [ordered]@{
     status = 'boot-preserving-installable-overlay'
     target = 'ordinary OnethingCloud OEC; base image must be validated separately'
     changes = @('install ARM64 Agent with a local password-protected dae rules switch defaulting off', 'install local password-protected OEC management UI as a separate low-privilege user', 'apply DHCP/DNS and MAC/IP settings through a dedicated dnsmasq service on explicit local save', 'apply static OEC IPv4 through a restricted root helper with automatic NetworkManager rollback until new-address login confirmation', 'install root-scoped dae config helper', 'install optional FRPC client', 'install systemd units', 'create low-privilege service users and isolated proxy-control group')
-    never_changes = @('/boot', 'Loader', 'DTB', 'partition table', 'existing agent.env', 'existing credentials.json', 'unrelated applications')
+    never_changes = @('/boot', 'Loader', 'DTB', 'partition table', 'device identity and keys', 'custom cloud endpoints', 'unrelated applications')
+    stock_endpoint_migration = 'exact stock Cloud URL and saved credential server migrate together from HTTPS 443 to 8443; transaction failures restore pre-existing files'
     defaults = @{ auto_enroll = $true; frpc_enabled = $false; dae_included = $false; dae_proxy_routing = $false; dhcp_active = $false; lan_dns_active = $false }
     source_sha256 = [ordered]@{
         agent = (Get-FileHash -Algorithm SHA256 -LiteralPath $agentPath).Hash.ToLowerInvariant()

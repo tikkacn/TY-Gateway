@@ -177,12 +177,15 @@ type Command struct {
 }
 
 type CompiledRule struct {
-	RuleID      string `json:"rule_id"`
-	Source      string `json:"source"`
-	Match       string `json:"match"`
-	Action      string `json:"action"`
-	Priority    int    `json:"priority"`
-	Explanation string `json:"explanation,omitempty"`
+	RuleID        string `json:"rule_id"`
+	Source        string `json:"source"`
+	SourceType    string `json:"source_type,omitempty"`
+	Category      string `json:"category,omitempty"`
+	DefaultAction string `json:"default_action,omitempty"`
+	Match         string `json:"match"`
+	Action        string `json:"action"`
+	Priority      int    `json:"priority"`
+	Explanation   string `json:"explanation,omitempty"`
 }
 
 type DeviceConfig struct {

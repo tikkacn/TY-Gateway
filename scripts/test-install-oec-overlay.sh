@@ -305,6 +305,19 @@ fi
 grep -q 'fixture ty-gateway-agent' "$install_root/etc/systemd/system/ty-gateway-agent.service" || fail "agent unit was not refreshed while preserving process"
 
 # Existing FRPC active/enabled: file and binary update, service does not restart.
+new_fixture stock-https-port
+mkdir -p "$install_root/etc/ty-gateway"
+printf 'TY_CLOUD_URL=https://oec.188811.xyz\nTY_DEVICE_SECRET=fixture-secret\n' > "$install_root/etc/ty-gateway/agent.env"
+run_installer >/dev/null
+assert_file_eq "$install_root/etc/ty-gateway/agent.env" $'TY_CLOUD_URL=https://oec.188811.xyz:8443\nTY_DEVICE_SECRET=fixture-secret' "stock HTTPS port migration"
+
+new_fixture custom-https-port
+mkdir -p "$install_root/etc/ty-gateway"
+printf 'TY_CLOUD_URL=https://custom.example:9443\n' > "$install_root/etc/ty-gateway/agent.env"
+run_installer >/dev/null
+assert_file_eq "$install_root/etc/ty-gateway/agent.env" "TY_CLOUD_URL=https://custom.example:9443" "custom Cloud URL retained"
+
+# Existing FRPC active/enabled: file and binary update, service does not restart.
 new_fixture frpc-active
 set_state ty-frpc-rescue.service "loaded enabled active"
 mkdir -p "$install_root/etc/ty-gateway" "$install_root/etc/systemd/system" "$install_root/usr/local/bin"

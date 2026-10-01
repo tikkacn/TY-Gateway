@@ -44,7 +44,7 @@ func (s *Server) adminResetCustomerSettings(w http.ResponseWriter, r *http.Reque
 		}
 		return
 	}
-	command, commandErr := s.Store.EnqueueCommand(r.Context(), model.Command{DeviceID: d.ID, Command: "reload_config"})
+	command, commandErr := s.Store.EnqueueCommand(r.Context(), model.Command{DeviceID: d.ID, Command: "reload_config", Payload: `{"reset_local_preferences":true}`})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok": true, "config_version": version, "baseline_profile": d.Profile,
 		"reload_queued": commandErr == nil && command.ID != "",

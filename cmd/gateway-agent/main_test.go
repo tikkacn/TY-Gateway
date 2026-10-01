@@ -538,22 +538,6 @@ func TestHeartbeatFailureDoesNotBlockConfigurationSync(t *testing.T) {
 	}
 }
 
-func TestNodePreferenceSaveQueuesConfigSyncWithoutWaitingForCloudReadback(t *testing.T) {
-	cloud := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/customer/node-preference") && r.Method == http.MethodPost {
-			_ = json.NewEncoder(w).Encode(map[string]any{"config_version": 3, "preferences": map[string]string{"AI": "node-1"}})
-			return
-		}
-		http.Error(w, "config readback unavailable", http.StatusServiceUnavailable)
-	}))
-	defer cloud.Close()
-	a := &agent{server: cloud.URL, client: cloud.Client(), state: credentialState{DeviceID: "device-1", DeviceSecret: "secret"}, syncNow: make(chan struct{}, 1), logger: log.New(io.Discard, "", 0)}
-	response := a.localCustomerRequest(context.Background(), localControlRequest{Method: http.MethodPost, Path: "/node-preference", Body: json.RawMessage(`{"category":"AI","node_id":"node-1"}`)})
-	if response.Error != "" || !bytes.Contains(response.Data, []byte(`"config_version":3`)) || len(a.syncNow) != 1 {
-		t.Fatalf("cloud save did not queue an independent device sync: error=%q data=%s queued=%d", response.Error, response.Data, len(a.syncNow))
-	}
-}
-
 func TestFailedSnapshotPreparationRequestsDaeRollback(t *testing.T) {
 	version := int64(1)
 	invalidPrefs := false

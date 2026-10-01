@@ -95,7 +95,7 @@ func (s *Server) customerCall(ctx context.Context, method, path string, body []b
 		return nil, errors.New(response.Error)
 	}
 	if len(response.Data) == 0 || len(response.Data) > 256<<10 || !json.Valid(response.Data) {
-		return nil, errors.New("云端客户配置响应无效。")
+		return nil, errors.New("本机客户配置响应无效。")
 	}
 	return response.Data, nil
 }

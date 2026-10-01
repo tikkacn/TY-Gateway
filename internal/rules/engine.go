@@ -239,7 +239,7 @@ func matchRule(r model.Rule, q Query) bool {
 }
 
 func toCompiled(r model.Rule, explanation string) model.CompiledRule {
-	return model.CompiledRule{RuleID: r.ID, Source: r.Source, Match: r.MatchType + "(" + r.MatchValue + ")", Action: r.Action, Priority: r.Priority, Explanation: explanation}
+	return model.CompiledRule{RuleID: r.ID, Source: r.Source, SourceType: r.SourceType, Category: r.Category, Match: r.MatchType + "(" + r.MatchValue + ")", Action: r.Action, Priority: r.Priority, Explanation: explanation}
 }
 func splitValues(v string) []string {
 	parts := strings.Split(v, ",")

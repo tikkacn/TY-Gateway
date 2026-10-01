@@ -45,6 +45,13 @@ func RenderDaeManaged(policy model.DaePolicy) (string, error) {
 	groupFilters := make(map[string]string)
 	groupPolicies := make(map[string]string)
 	var routes []string
+	if policy.ProxyEnabled {
+		// OEC's own sockets are not hooked: only forwarded LAN traffic is
+		// captured below. Internal control DNS still needs an explicit direct
+		// destination when dae selects a dialer in userspace.
+		routes = append(routes, "dip('223.5.5.5') && dport(53) -> direct")
+	}
+	var controlNames []string
 	for _, host := range policy.DirectHosts {
 		rule, err := directHostRule(host)
 		if err != nil {
@@ -52,6 +59,9 @@ func RenderDaeManaged(policy model.DaePolicy) (string, error) {
 		}
 		if rule != "" {
 			routes = append(routes, rule)
+		}
+		if _, err := netip.ParseAddr(strings.TrimSpace(host)); rule != "" && err != nil {
+			controlNames = append(controlNames, "full: "+daeQuote(strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")))
 		}
 	}
 	// Always keep private, multicast, and link-local destinations on the LAN.
@@ -108,11 +118,16 @@ func RenderDaeManaged(policy model.DaePolicy) (string, error) {
 	}
 	fmt.Fprintf(&b, "# Managed by TY Gateway. Do not edit.\n# profile: %s\n# proxy_enabled: %t\n", profile, policy.ProxyEnabled)
 	if policy.ProxyEnabled {
-		// OEC is a one-port bypass gateway. Both sides intentionally use the
-		// same physical NIC; this block is emitted only after the local safety
-		// gate permits proxy routing. Use dae's documented default dial mode;
+		// OEC is a LAN gateway, not a proxy for its own management processes.
+		// Do not bind WAN/auto on this one-port appliance: it also captures the
+		// host resolver and can make proxy recovery depend on proxy DNS.
+		// This block is emitted only after the local safety gate permits routing.
+		// Use dae's documented default dial mode;
 		// domain++ cannot rescue traffic already classified as direct.
-		fmt.Fprintf(&b, "global {\n  lan_interface: %s\n  wan_interface: auto\n  dial_mode: domain\n", policy.Interface)
+		// The Agent already fetched/validated a local file subscription. An
+		// Internet reachability probe during reload can consume most of dae's
+		// 45-second preparation budget and break offline cached recovery.
+		fmt.Fprintf(&b, "global {\n  lan_interface: %s\n  dial_mode: domain\n  disable_waiting_network: true\n", policy.Interface)
 		if policy.TCPCheckURL != "" {
 			fmt.Fprintf(&b, "  tcp_check_url: %s\n  tcp_check_http_method: HEAD\n", strconv.Quote(policy.TCPCheckURL))
 		}
@@ -131,11 +146,21 @@ func RenderDaeManaged(policy model.DaePolicy) (string, error) {
 			} else {
 				fmt.Fprintf(&b, "  bind: '%s:5353'\n", address.String())
 			}
+			b.WriteString("  upstream {\n    googledns: 'https://dns.google/dns-query'\n    control_dns: 'tcp+udp://223.5.5.5:53'\n")
+			if !strings.HasPrefix(profile, "managed_") {
+				b.WriteString("    alidns: 'udp://dns.alidns.com:53'\n")
+			}
+			b.WriteString("  }\n  routing {\n    request {\n")
+			if len(controlNames) > 0 {
+				// Control/rescue resolution must survive a failed proxy. These
+				// immutable exact-name exceptions precede customer DNS policy.
+				fmt.Fprintf(&b, "      qname(%s) -> control_dns\n", strings.Join(controlNames, ", "))
+			}
 			if strings.HasPrefix(profile, "managed_") {
 				// Managed packages must not consult an unrelated on-device geosite database.
-				b.WriteString("  upstream {\n    googledns: 'https://dns.google/dns-query'\n  }\n  routing {\n    request {\n      fallback: googledns\n    }\n    response {\n      fallback: accept\n    }\n  }\n")
+				b.WriteString("      fallback: googledns\n    }\n    response {\n      fallback: accept\n    }\n  }\n")
 			} else {
-				b.WriteString("  upstream {\n    googledns: 'https://dns.google/dns-query'\n    alidns: 'udp://dns.alidns.com:53'\n  }\n  routing {\n    request {\n      qname(geosite:cn) -> alidns\n      fallback: googledns\n    }\n    response {\n      upstream(googledns) -> accept\n      ip(geoip:private) && !qname(geosite:cn) -> googledns\n      fallback: accept\n    }\n  }\n")
+				b.WriteString("      qname(geosite:cn) -> alidns\n      fallback: googledns\n    }\n    response {\n      upstream(control_dns, googledns) -> accept\n      ip(geoip:private) && !qname(geosite:cn) -> googledns\n      fallback: accept\n    }\n  }\n")
 			}
 		}
 		b.WriteString("}\n")

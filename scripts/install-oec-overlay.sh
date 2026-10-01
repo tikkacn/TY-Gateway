@@ -270,6 +270,12 @@ declare -a managed_targets=(
 if [[ "${unit_masked[ty-frpc-rescue.service]}" != 1 ]]; then
   managed_targets+=(/etc/systemd/system/ty-frpc-rescue.service)
 fi
+# A stock endpoint migration can update the existing credential's server field
+# when the new Agent starts. Include only pre-existing identity in transaction
+# recovery; never remove credentials created by a first enrollment on rollback.
+if [[ -f "$(target /var/lib/ty-gateway/credentials.json)" ]]; then
+  managed_targets+=(/var/lib/ty-gateway/credentials.json)
+fi
 
 keep_backup="${TY_OVERLAY_KEEP_BACKUP:-0}"
 [[ "$keep_backup" == 0 || "$keep_backup" == 1 ]] || { echo "TY_OVERLAY_KEEP_BACKUP must be 0 or 1" >&2; exit 2; }
@@ -498,6 +504,10 @@ install -m 0644 "$payload_dir/etc/ty-gateway/release-public.pem" "$release_publi
 
 if [[ ! -e "$(target /etc/ty-gateway/agent.env)" ]]; then
   install -o root -g tygateway -m 0640 "$payload_dir/etc/ty-gateway/agent.env.example" "$(target /etc/ty-gateway/agent.env)"
+elif grep -qx 'TY_CLOUD_URL=https://oec.188811.xyz' "$(target /etc/ty-gateway/agent.env)"; then
+  # Repair the old stock device URL only. This file is already in the
+  # transactional backup; custom endpoints and all credentials are untouched.
+  sed -i 's|^TY_CLOUD_URL=https://oec.188811.xyz$|TY_CLOUD_URL=https://oec.188811.xyz:8443|' "$(target /etc/ty-gateway/agent.env)"
 fi
 if [[ ! -e "$(target /etc/ty-gateway/local.env)" ]]; then
   install -o root -g tylocal -m 0640 "$payload_dir/etc/ty-gateway/local.env.example" "$(target /etc/ty-gateway/local.env)"
@@ -584,7 +594,7 @@ fi
 
 echo "TY Gateway overlay installed and package checksums verified."
 echo "Existing service enablement and masked states were preserved."
-echo "Existing agent.env, local.env, credentials.json and FRPC configuration were retained."
+echo "Existing settings, credentials and FRPC configuration were retained; the old stock Cloud URL was repaired to device HTTPS port 8443 when applicable."
 if [[ -f "$frpc_config" ]]; then
   echo "FRPC configuration validated and retained; the rescue service state was not changed."
   echo "A running FRPC process was not restarted; the updated binary and unit take effect on a later operator-approved safe restart."
