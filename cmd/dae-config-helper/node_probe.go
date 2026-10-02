@@ -224,7 +224,7 @@ func collectNativeChecksWith(ctx context.Context, since time.Time, command daeCo
 }
 
 var probeANSI = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
-var probeReloadFinished = regexp.MustCompile(`\[Reload\]\s+Finished\b`)
+var probeReloadFinished = regexp.MustCompile(`(?:^\s*(?:INFO(?:\[[^]]*\])?[ \t]+)?|(?:^|\s)msg=")(?:\[Reload\]|Reload:)[ \t]+Finished(?:[ \t]|"|$)`)
 
 func collectNativeProbeBatchWith(ctx context.Context, since time.Time, command daeCommandRunner) (nativeProbeBatch, error) {
 	// Filter before applying the limit. Busy DEBUG traffic must not evict health

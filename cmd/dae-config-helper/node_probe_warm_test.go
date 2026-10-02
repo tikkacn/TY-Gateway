@@ -19,7 +19,8 @@ func TestProbeWarmupUsesActualReloadCompletionWithFormattingAndReverseRows(t *te
 	}{
 		{since.Add(12 * time.Second), "INFO [Reload] Finished"},
 		{since.Add(7 * time.Second), "DEBUG Connectivity Check last=43ms network=tcp4 node=hk"},
-		{since.Add(time.Second), "INFO \x1b[36m[Reload]\x1b[0m    Finished"},
+		{since.Add(2 * time.Second), "INFO \x1b[36m[Reload]\x1b[0m    Finished"},
+		{since.Add(time.Second), " INFO Reload: Finished"}, // actual test-device fixture
 		{since.Add(-time.Second), "INFO [Reload] Finished"},
 	} {
 		line, _ := json.Marshal(map[string]string{"MESSAGE": row.msg, "__REALTIME_TIMESTAMP": strconv.FormatInt(row.at.UnixMicro(), 10)})
@@ -28,6 +29,19 @@ func TestProbeWarmupUsesActualReloadCompletionWithFormattingAndReverseRows(t *te
 	batch, err := collectNativeProbeBatchWith(context.Background(), since, func(_ context.Context, _ string, _ ...string) ([]byte, error) { return lines, nil })
 	if err != nil || !batch.ReloadedAt.Equal(since.Add(time.Second)) || len(batch.Observations) != 1 || *batch.Observations[0].LatencyMS != 43 {
 		t.Fatalf("wrong diagnostic-generation boundary: %#v %v", batch, err)
+	}
+}
+
+func TestProbeWarmupCompletionOnlyAcceptsNativeMessages(t *testing.T) {
+	for _, msg := range []string{" INFO Reload: Finished", "INFO [Reload] Finished", "INFO[time] [Reload] Finished", `level=info msg="[Reload] Finished"`} {
+		if !probeReloadFinished.MatchString(msg) {
+			t.Fatalf("native completion rejected: %q", msg)
+		}
+	}
+	for _, msg := range []string{`DEBUG flow err="Reload: Finished"`, "INFO not a reload: Reload: Finished", "INFO Reload: Unfinished", "INFO [Reload] FinishedLater"} {
+		if probeReloadFinished.MatchString(msg) {
+			t.Fatalf("non-completion matched: %q", msg)
+		}
 	}
 }
 
