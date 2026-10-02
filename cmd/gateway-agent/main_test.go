@@ -175,6 +175,8 @@ func TestSetLocalProxyStaysOffUnlessDaeConfirmsAppliedPolicy(t *testing.T) {
 	}
 
 	state := a.setLocalProxy(context.Background(), true)
+	waitConfigSync(t, a)
+	state = a.localControlStatus()
 	if state.Enabled || state.Applied || state.Error == "" {
 		t.Fatalf("unconfirmed Dae policy must fail closed; got %#v", state)
 	}
@@ -223,6 +225,11 @@ func TestSetLocalProxyReportsEnabledOnlyAfterDaeAppliesPolicy(t *testing.T) {
 	}
 
 	state := a.setLocalProxy(context.Background(), true)
+	if !state.Initializing || state.Enabled || state.Applied {
+		t.Fatalf("first enable must report initialization, not applied: %#v", state)
+	}
+	waitConfigSync(t, a)
+	state = a.localControlStatus()
 	if !state.Enabled || !state.Applied || !state.Ready || !state.Subscription || state.NodeCount != 16 {
 		t.Fatalf("success requires Dae to apply policy and confirm parsed nodes; got %#v", state)
 	}

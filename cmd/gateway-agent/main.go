@@ -29,7 +29,7 @@ import (
 	"tygateway/internal/nodeprobe"
 )
 
-const defaultVersion = "0.8.12"
+const defaultVersion = "0.8.13"
 
 const (
 	localProxyFile = "local-proxy.json"
@@ -115,6 +115,13 @@ type agent struct {
 	state                    credentialState
 	stateMu                  sync.RWMutex
 	configMu                 sync.Mutex
+	configSyncMu             sync.Mutex
+	backgroundSync           bool
+	syncRunning              bool
+	proxyPending             bool
+	proxyWanted              bool
+	proxyGeneration          uint64
+	proxyError               string
 	daeApplier               daeApplier
 	autoFRP                  *autoFRPManager
 	autoFRPState             string
@@ -146,6 +153,7 @@ type localControlRequest struct {
 }
 
 type localControlResponse struct {
+	Initializing bool            `json:"initializing,omitempty"`
 	RulesProfile string          `json:"rules_profile,omitempty"`
 	RulesVersion string          `json:"rules_version,omitempty"`
 	Enabled      bool            `json:"enabled"`
@@ -242,6 +250,7 @@ func main() {
 		}
 		return
 	}
+	a.backgroundSync = true
 	go func() {
 		if err := a.serveLocalControl(controlSocket); err != nil {
 			a.logger.Printf("local proxy control unavailable")
@@ -266,12 +275,7 @@ func main() {
 			}
 			a.reconcileRunningService()
 		case <-a.syncNow:
-			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-			err := a.fetchConfig(ctx)
-			cancel()
-			if err != nil {
-				a.logger.Printf("requested config sync failed: %v", safeSyncError(err))
-			}
+			a.startConfigSync(false, false)
 		}
 	}
 }
@@ -451,7 +455,10 @@ func (a *agent) cycle(ctx context.Context) error {
 	if err := a.sendStatus(ctx, "/heartbeat"); err != nil {
 		failures = append(failures, fmt.Errorf("heartbeat: %s", safeSyncError(err)))
 	}
-	if time.Since(a.lastConfig) >= a.configEvery || a.subscriptionRefreshDue() || a.ipv4RecheckDue() {
+	a.stateMu.RLock()
+	lastConfig := a.lastConfig
+	a.stateMu.RUnlock()
+	if time.Since(lastConfig) >= a.configEvery || a.subscriptionRefreshDue() || a.ipv4RecheckDue() {
 		fullRefresh := a.subscriptionRefreshDue()
 		recheckIPv4 := !fullRefresh && a.ipv4RecheckDue()
 		if fullRefresh {
@@ -459,7 +466,9 @@ func (a *agent) cycle(ctx context.Context) error {
 		} else if recheckIPv4 {
 			a.logger.Printf("scheduled subscription name-filter recheck started")
 		}
-		if err := a.fetchConfigWithOptions(ctx, fullRefresh, recheckIPv4); err != nil {
+		if a.backgroundSync {
+			a.startConfigSync(fullRefresh, recheckIPv4)
+		} else if err := a.fetchConfigWithOptions(ctx, fullRefresh, recheckIPv4); err != nil {
 			failures = append(failures, fmt.Errorf("config sync: %s", safeSyncError(err)))
 		}
 	}
@@ -509,18 +518,16 @@ func (a *agent) fetchConfigWithForce(ctx context.Context, forceSubscription bool
 }
 
 func (a *agent) fetchConfigWithOptions(ctx context.Context, forceSubscription, recheckIPv4 bool) error {
-	a.configMu.Lock()
-	defer a.configMu.Unlock()
-	return a.fetchConfigLocked(ctx, forceSubscription, recheckIPv4)
+	return a.fetchConfigWithReset(ctx, forceSubscription, recheckIPv4, false)
 }
 
-func (a *agent) fetchConfigLocked(ctx context.Context, forceSubscription, recheckIPv4 bool) error {
-	return a.fetchConfigLockedWithReset(ctx, forceSubscription, recheckIPv4, false)
-}
-
-func (a *agent) fetchConfigLockedWithReset(ctx context.Context, forceSubscription, recheckIPv4, resetLocalPreferences bool, resetCommandIDs ...string) error {
+func (a *agent) fetchConfigWithReset(ctx context.Context, forceSubscription, recheckIPv4, resetLocalPreferences bool, resetCommandIDs ...string) error {
+	// Serialize cloud revisions, but never hold the local apply/switch lock
+	// while downloading. Local preferences are read only at commit time.
+	a.configSyncMu.Lock()
+	defer a.configSyncMu.Unlock()
 	started := time.Now()
-	data, status, err := a.signedRequest(ctx, http.MethodGet, "/api/v1/device/"+url.PathEscape(a.stateValue().DeviceID)+"/config", nil)
+	data, status, err := a.downloadConfig(ctx)
 	if err != nil {
 		return err
 	}
@@ -549,6 +556,22 @@ func (a *agent) fetchConfigLockedWithReset(ctx context.Context, forceSubscriptio
 	if err != nil {
 		return err
 	}
+	a.configMu.Lock()
+	err = a.applyDownloadedConfig(ctx, config, cloudCustomer, forceSubscription, recheckIPv4, resetLocalPreferences, resetCommandIDs...)
+	a.configMu.Unlock()
+	if err == nil {
+		a.finishPendingEnable(ctx)
+		a.reportAppliedConfig(ctx)
+	}
+	if err == nil && a.logger != nil {
+		a.logger.Printf("config_sync stage=complete elapsed_ms=%d", time.Since(started).Milliseconds())
+	}
+	return err
+}
+
+func (a *agent) applyDownloadedConfig(ctx context.Context, config model.DeviceConfig, cloudCustomer []byte, forceSubscription, recheckIPv4, resetLocalPreferences bool, resetCommandIDs ...string) error {
+	started := time.Now()
+	var err error
 	previous, previousErr := a.loadAppliedSnapshot()
 	localPreferences, localRevision := previous.LocalPreferences, previous.LocalRevision
 	resetCommandID := previous.LastResetCommandID
@@ -710,12 +733,14 @@ func (a *agent) fetchConfigLockedWithReset(ctx context.Context, forceSubscriptio
 	}
 	subscriptionRefreshAttempted := subscriptionChanged && config.DaeSubscription != nil
 	if applyErr != nil {
+		a.stateMu.Lock()
 		if subscriptionRefreshAttempted {
 			a.lastSubscriptionRefresh = time.Now()
 		}
 		if recheckIPv4 {
 			a.lastIPv4Recheck = time.Now()
 		}
+		a.stateMu.Unlock()
 		return failUpdate(applyErr) // Never replace a last-known-good snapshot after a failed apply.
 	}
 	if config.DaeSubscriptionManaged && boundSubscriptionID != "" && len(validatedNodes) == 0 {
@@ -739,6 +764,7 @@ func (a *agent) fetchConfigLockedWithReset(ctx context.Context, forceSubscriptio
 		}
 		return failUpdate(fmt.Errorf("save applied configuration: %w", err))
 	}
+	a.stateMu.Lock()
 	a.lastConfig = time.Now()
 	if a.logger != nil {
 		a.logger.Printf("config_sync stage=applied version=%d elapsed_ms=%d", config.ConfigVersion, time.Since(started).Milliseconds())
@@ -753,7 +779,19 @@ func (a *agent) fetchConfigLockedWithReset(ctx context.Context, forceSubscriptio
 		// one-minute retry storm.
 		a.lastIPv4Recheck = a.lastConfig
 	}
-	if daeApplied {
+	a.stateMu.Unlock()
+	return nil
+}
+
+// Reporting must not keep the switch locked after a local transaction commits.
+func (a *agent) reportAppliedConfig(ctx context.Context) {
+	snapshot, err := a.loadAppliedSnapshot()
+	if err != nil {
+		return
+	}
+	validatedNodes := customerNodes(snapshot.Config.Nodes)
+	boundSubscriptionID := snapshot.SubscriptionID
+	{
 		// A native dae reload may outlive one normal polling interval. Report its
 		// final state promptly with a short bounded status request even if the
 		// original polling context has expired while dae was rebuilding.
@@ -777,7 +815,6 @@ func (a *agent) fetchConfigLockedWithReset(ctx context.Context, forceSubscriptio
 			cancelReport()
 		}
 	}
-	return nil
 }
 
 func (a *agent) reconcileAutoFRP(ctx context.Context, config *model.AutoFRPConfig) {
@@ -814,8 +851,9 @@ func (a *agent) subscriptionRefreshDue() bool {
 	}
 	a.stateMu.RLock()
 	enabled := a.localProxyOn && a.daeSubID != ""
+	last := a.lastSubscriptionRefresh
 	a.stateMu.RUnlock()
-	return enabled && (a.lastSubscriptionRefresh.IsZero() || time.Since(a.lastSubscriptionRefresh) >= a.subscriptionRefreshEvery)
+	return enabled && (last.IsZero() || time.Since(last) >= a.subscriptionRefreshEvery)
 }
 
 func (a *agent) ipv4RecheckDue() bool {
@@ -824,8 +862,9 @@ func (a *agent) ipv4RecheckDue() bool {
 	}
 	a.stateMu.RLock()
 	enabled := a.localProxyOn && a.daeSubID != ""
+	last := a.lastIPv4Recheck
 	a.stateMu.RUnlock()
-	return enabled && (a.lastIPv4Recheck.IsZero() || time.Since(a.lastIPv4Recheck) >= a.ipv4RecheckEvery)
+	return enabled && (last.IsZero() || time.Since(last) >= a.ipv4RecheckEvery)
 }
 
 func (a *agent) localProxyPath() string {
@@ -912,8 +951,10 @@ func (a *agent) localControlStatus() localControlResponse {
 	}
 	a.stateMu.RLock()
 	state := localControlResponse{
+		Initializing: a.proxyPending,
+		Error:        a.proxyError,
 		RulesProfile: applied.Profile, RulesVersion: applied.Version,
-		Enabled:      a.localProxyOn,
+		Enabled:      a.localProxyOn && !a.proxyPending,
 		Applied:      a.proxyApplied,
 		Ready:        a.policyReady,
 		Subscription: a.daeStatus == "ok" && a.daeNodeCount > 0,
@@ -930,15 +971,28 @@ func (a *agent) localControlStatus() localControlResponse {
 	}
 	state.DaemonActive = active
 	state.Applied = state.Applied && active
-	if !state.Enabled && active {
+	if !state.Enabled && !state.Initializing && active {
 		state.Error = "开关已关闭，但 dae 仍在运行；正在重试停止服务。"
 	}
 	return state
 }
 
 func (a *agent) setLocalProxy(ctx context.Context, enabled bool) localControlResponse {
+	// Record cancellation before waiting for a short DAE transaction. A cloud
+	// download finishing later must observe the newest switch intent.
+	a.stateMu.Lock()
+	a.proxyGeneration++
+	generation := a.proxyGeneration
+	a.proxyWanted, a.proxyPending, a.proxyError = enabled, false, ""
+	if !enabled {
+		a.localProxyOn = false
+	}
+	a.stateMu.Unlock()
 	a.configMu.Lock()
 	defer a.configMu.Unlock()
+	if !a.currentProxyIntent(generation) {
+		return a.localControlStatus()
+	}
 	if !enabled {
 		if err := a.saveLocalProxy(false); err != nil {
 			state := a.localControlStatus()
@@ -967,28 +1021,26 @@ func (a *agent) setLocalProxy(ctx context.Context, enabled bool) localControlRes
 	if !a.allowDaeProxy {
 		return a.rejectLocalProxyEnable(ctx, "本机代理安全开关未授权，未启用 dae 代理。")
 	}
-	a.stateMu.Lock()
-	a.localProxyOn = true // Keep the persisted setting off until Dae confirms the live policy.
-	a.stateMu.Unlock()
-	cloudErr := a.fetchConfigLocked(ctx, false, false)
-	var state localControlResponse
-	if cloudErr != nil {
-		cached := a.applyCachedPolicy(ctx, true)
-		if cached.Error != "" {
-			return a.rejectLocalProxyEnable(ctx, "云端同步失败，且本机缓存策略未能通过 dae 校验："+cached.Error)
+	if snapshot, err := a.loadAppliedSnapshot(); err == nil && snapshot.SubscriptionID != "" && len(snapshot.Config.Nodes) > 0 {
+		state := a.enableCachedProxy(ctx, generation)
+		if state.Enabled && a.syncNow != nil {
+			select {
+			case a.syncNow <- struct{}{}:
+			default:
+			}
 		}
-		state = cached
-		state.Error = "云端暂不可用，已验证并应用本机最近一次配置；联网恢复后会自动更新。"
-	} else {
-		state = a.localControlStatus()
+		return state
 	}
-	if !state.Applied || !state.Ready || !state.Subscription || state.NodeCount <= 0 {
-		return a.rejectLocalProxyEnable(ctx, "dae 未确认订阅节点和代理策略均已生效，代理保持关闭。")
+	if err := a.saveLocalProxy(false); err != nil {
+		return a.rejectLocalProxyEnable(ctx, "首次初始化前无法安全保存关闭状态。")
 	}
-	if err := a.saveLocalProxy(true); err != nil {
-		return a.rejectLocalProxyEnable(ctx, "dae 已应用策略，但本地开关状态无法安全保存；正在恢复直连。")
+	a.stateMu.Lock()
+	if a.proxyGeneration == generation && a.proxyWanted {
+		a.localProxyOn, a.proxyPending = false, true
 	}
-	return state
+	a.stateMu.Unlock()
+	a.startConfigSync(false, false)
+	return a.localControlStatus()
 }
 
 func (a *agent) rejectLocalProxyEnable(ctx context.Context, reason string) localControlResponse {
@@ -996,6 +1048,7 @@ func (a *agent) rejectLocalProxyEnable(ctx context.Context, reason string) local
 	a.stateMu.Lock()
 	a.localProxyOn = false
 	a.daePolicyHash = ""
+	a.proxyPending = false
 	a.stateMu.Unlock()
 	state := a.applyCachedPolicy(ctx, false)
 	if state.Error != "" {
@@ -1234,9 +1287,7 @@ func (a *agent) localCustomerRequest(ctx context.Context, request localControlRe
 		return localControlResponse{Error: "云端客户配置响应无效。"}
 	}
 	if method == http.MethodPost && path != "/action" {
-		a.configMu.Lock()
-		err := a.fetchConfigLockedWithReset(ctx, false, false, path == "/settings")
-		a.configMu.Unlock()
+		err := a.fetchConfigWithReset(ctx, false, false, path == "/settings")
 		if err != nil {
 			return localControlResponse{Error: "云端已保存，但设备未确认应用；本地记录仍保留上一版，请核对设备状态后重试。"}
 		}
@@ -1390,13 +1441,11 @@ func (a *agent) pollCommands(ctx context.Context) error {
 			if command.Payload != "" {
 				_ = json.Unmarshal([]byte(command.Payload), &reset)
 			}
-			a.configMu.Lock()
 			resetID := ""
 			if reset.ResetLocalPreferences {
 				resetID = command.ID
 			}
-			err := a.fetchConfigLockedWithReset(commandCtx, false, false, reset.ResetLocalPreferences, resetID)
-			a.configMu.Unlock()
+			err := a.fetchConfigWithReset(commandCtx, false, false, reset.ResetLocalPreferences, resetID)
 			if err == nil {
 				result = "ok"
 			}
@@ -1507,7 +1556,15 @@ func (a *agent) request(ctx context.Context, method, path string, body []byte, h
 			req.Header.Set(name, value)
 		}
 	}
-	resp, err := a.client.Do(req)
+	client := a.client
+	if method == http.MethodGet && strings.HasSuffix(path, "/config") {
+		// Preserve the shared transport (including gzip), but give the config
+		// body its own budget. Heartbeats keep their existing 15-second limit.
+		configClient := *client
+		configClient.Timeout = configDownloadTimeout
+		client = &configClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		a.logCloudFailure(method, path, "request", 0, err, started)
 		return nil, 0, err

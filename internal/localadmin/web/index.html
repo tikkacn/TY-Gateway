@@ -259,16 +259,17 @@ function ensureProxyControl(){
   const enabled=toggle.checked,previous=proxyState?.enabled??false;
   if(enabled&&!confirm('开启后，所有以 OEC 为网关的局域网设备将按 dae 规则分流。确认开启？')){toggle.checked=previous;return}
   proxyBusy=true;toggle.disabled=true;$('proxyFeedback').textContent='正在校验订阅并应用 dae 配置…';$('proxyFeedback').className='help';
-  try{const result=await api('/proxy','POST',{enabled});proxyState=result;toggle.checked=!!result.enabled;paintProxyStatus(result);if(result.error){$('proxyFeedback').textContent=result.error;$('proxyFeedback').className='error'}else{$('proxyFeedback').textContent=enabled?(result.applied?'已应用，客户端按规则分流。':'已保存；云端临时全局直连当前优先生效。'):'已应用。代理规则已关闭。';$('proxyFeedback').className='notice good'}}
+  try{const result=await api('/proxy','POST',{enabled});proxyState=result;paintProxyStatus(result);if(result.error){$('proxyFeedback').textContent=result.error;$('proxyFeedback').className='error'}else if(result.initializing){$('proxyFeedback').textContent='正在准备首次配置，尚未开启；完成后自动启用。取消勾选即可取消开启。';$('proxyFeedback').className='notice'}else{$('proxyFeedback').textContent=enabled?(result.applied?'已应用本机配置，客户端按规则分流。':'已保存；云端临时全局直连当前优先生效。'):'已应用。代理规则已关闭。';$('proxyFeedback').className='notice good'}}
   catch(e){toggle.checked=previous;$('proxyFeedback').textContent=e.message;$('proxyFeedback').className='error'}
-  finally{proxyBusy=false;toggle.disabled=false}
+  finally{proxyBusy=false;toggle.disabled=false;if(proxyState?.initializing){clearTimeout(proxyStatusTimer);proxyStatusTimer=setTimeout(()=>refreshProxyStatus(),3000)}}
  });
 }
 function paintProxyStatus(state){
- const toggle=$('proxySwitch');if(!toggle)return;toggle.checked=!!state.enabled;toggle.disabled=proxyBusy;
- $('proxySwitchLabel').textContent=state.enabled?(state.daemon_active?'科学上网已开启':'科学上网待恢复'):(state.daemon_active?'关闭尚未完成':'科学上网已关闭');
+ const toggle=$('proxySwitch');if(!toggle)return;toggle.checked=!!(state.enabled||state.initializing);toggle.disabled=proxyBusy;
+ $('proxySwitchLabel').textContent=state.initializing?'正在初始化（尚未开启）':state.enabled?(state.daemon_active?'科学上网已开启':'科学上网待恢复'):(state.daemon_active?'关闭尚未完成':'科学上网已关闭');
  const status=$('proxyRuntime');
  if(state.error){status.textContent=state.error;status.className='notice warn'}
+ else if(state.initializing){status.textContent='正在下载并校验首次节点与规则；DAE 确认后才会开启。可取消勾选，下载完成后也不会自动重新开启。';status.className='notice'}
  else if(!state.enabled&&!state.daemon_active){status.textContent='dae 已停止；重启后仍保持关闭。';status.className='notice good'}
  else if(!state.enabled&&state.daemon_active){status.textContent='关闭尚未完成：dae 仍在运行，请暂勿让客户端通过 OEC 网关上网。';status.className='notice warn'}
  else if(state.enabled&&!state.daemon_active){status.textContent='已保存开启，但 dae 尚未运行；本机缓存恢复尚未确认，请检查代理控制服务。';status.className='notice warn'}
@@ -280,9 +281,9 @@ function paintProxyStatus(state){
 }
 async function refreshProxyStatus(){
  clearTimeout(proxyStatusTimer);if(!$('appView')||$('appView').classList.contains('hidden'))return;
- try{proxyState=await api('/proxy','GET',undefined,6000);paintProxyStatus(proxyState);if(proxyState.error){$('proxyFeedback').textContent=proxyState.error;$('proxyFeedback').className='error'}}
+ try{const wasInitializing=proxyState?.initializing;proxyState=await api('/proxy','GET',undefined,6000);if(!proxyBusy){paintProxyStatus(proxyState);if(proxyState.error){$('proxyFeedback').textContent=proxyState.error;$('proxyFeedback').className='error'}else if(wasInitializing&&!proxyState.initializing){$('proxyFeedback').textContent=proxyState.applied?'本机配置已确认应用，代理已开启。':'初始化已取消，代理保持关闭。';$('proxyFeedback').className='notice'}}}
  catch(e){$('proxyRuntime').textContent=e.name==='AbortError'?'读取 DAE 状态超时，请检查本机代理控制服务。':'暂时无法读取 DAE 状态：'+e.message;$('proxyRuntime').className='notice warn';$('proxySwitch').disabled=true}
- proxyStatusTimer=setTimeout(()=>refreshProxyStatus(),15000);
+ proxyStatusTimer=setTimeout(()=>refreshProxyStatus(),proxyState?.initializing?3000:15000);
 }
 function error(id,msg){$(id).textContent=msg||''}
 function replaceContent(target,...nodes){while(target.firstChild)target.removeChild(target.firstChild);for(const node of nodes)target.appendChild(node)}

@@ -113,9 +113,7 @@ func TestLocalNodePreferenceSurvivesCloudSyncAndExplicitReset(t *testing.T) {
 	}
 	cloudConfig.Preferences = map[string]string{}
 	cloudConfig.BaseRules[0].Action, cloudConfig.Rules[0].Action = "PROXY", "PROXY"
-	a.configMu.Lock()
-	err := a.fetchConfigLockedWithReset(context.Background(), false, false, true, "reset-1")
-	a.configMu.Unlock()
+	err := a.fetchConfigWithReset(context.Background(), false, false, true, "reset-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,9 +124,7 @@ func TestLocalNodePreferenceSurvivesCloudSyncAndExplicitReset(t *testing.T) {
 	if result := a.saveLocalNodePreference(context.Background(), []byte(`{"category":"AI","node_id":"node-1"}`)); result.Error != "" {
 		t.Fatal(result.Error)
 	}
-	a.configMu.Lock()
-	err = a.fetchConfigLockedWithReset(context.Background(), false, false, true, "reset-1")
-	a.configMu.Unlock()
+	err = a.fetchConfigWithReset(context.Background(), false, false, true, "reset-1")
 	if err != nil {
 		t.Fatal(err)
 	}

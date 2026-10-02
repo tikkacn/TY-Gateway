@@ -10,6 +10,7 @@ import (
 )
 
 type proxyControlState struct {
+	Initializing bool   `json:"initializing,omitempty"`
 	Enabled      bool   `json:"enabled"`
 	Applied      bool   `json:"applied"`
 	RulesProfile string `json:"rules_profile,omitempty"`

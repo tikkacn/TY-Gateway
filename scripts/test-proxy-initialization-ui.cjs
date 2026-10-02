@@ -1,0 +1,24 @@
+// Focused status presentation checks; no live browser/device mutations.
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const html=fs.readFileSync(require('node:path').join(__dirname,'../internal/localadmin/web/index.html'),'utf8');
+for(const script of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(script[1]);
+const elements=new Map();
+const $=id=>{if(!elements.has(id))elements.set(id,{});return elements.get(id)};
+const start=html.indexOf('function paintProxyStatus(state){'),end=html.indexOf('async function refreshProxyStatus()',start);
+assert.ok(start>0&&end>start);
+const paint=vm.runInNewContext(html.slice(start,end)+';paintProxyStatus',{$,proxyBusy:false});
+paint({initializing:true,enabled:false,applied:false,daemon_active:false});
+assert.equal($('proxySwitch').checked,true);
+assert.equal($('proxySwitch').disabled,false);
+assert.match($('proxySwitchLabel').textContent,/尚未开启/);
+assert.match($('proxyRuntime').textContent,/取消勾选/);
+paint({enabled:false,daemon_active:false});
+assert.equal($('proxySwitch').checked,false);
+assert.equal($('proxySwitchLabel').textContent,'科学上网已关闭');
+paint({enabled:true,daemon_active:true,ready:true,applied:true,subscription_available:true,node_count:16});
+assert.equal($('proxySwitchLabel').textContent,'科学上网已开启');
+assert.match($('proxyRuntime').textContent,/16 个节点/);
+paint({enabled:false,error:'首次配置下载超时'});
+assert.equal($('proxyRuntime').textContent,'首次配置下载超时');
+assert.match(html,/proxyState\?\.initializing\?3000:15000/);
+console.log('Proxy initialization: truthful status, cancel control and completed/off/error states OK');
