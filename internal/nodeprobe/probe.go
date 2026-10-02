@@ -122,7 +122,7 @@ func ValidateCompiled(raw string) error {
 }
 
 var fields = regexp.MustCompile(`(?:^|\s)([a-z_0-9]+)=("(?:\\.|[^"\\])*"|[^\s]+)`)
-var message = regexp.MustCompile(`(?:^|\]\s*|msg=")(Connectivity Check(?: Failed)?)(?:\s|"|$)`)
+var message = regexp.MustCompile(`(?:^DEBUG[ \t]+|^|\]\s*|msg=")(Connectivity Check(?: Failed)?)(?:\s|"|$)`)
 
 // ParseMessage only accepts native TCP/IPv4 check records; UDP, candidate group
 // lists and traffic logs are not latency results. Never return raw errors/logs.

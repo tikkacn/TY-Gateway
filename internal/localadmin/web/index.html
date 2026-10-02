@@ -47,14 +47,25 @@
   function latencyPresentation(result,now=Date.now()){
     if(!result||result.status==='unknown')return {text:'未测速',color:'unknown'};
     const stamp=Date.parse(result.checked_at);
-    if(!Number.isFinite(stamp)||now-stamp>300000||stamp-now>60000)return {text:'结果已过期',color:'unknown'};
-    if(result.status==='failed')return {text:'连接失败',color:'bad'};
+    if(!Number.isFinite(stamp)||stamp-now>60000)return {text:'时间异常',color:'unknown'};
+    const stale=now-stamp>300000,details={checkedAt:stamp,stale};
+    if(result.status==='failed')return {text:'连接失败',color:stale?'unknown':'bad',...details};
     const ms=result.latency_ms;
     if(result.status!=='ok'||typeof ms!=='number'||!Number.isFinite(ms)||ms<0)return {text:'未测速',color:'unknown'};
-    return {text:ms===0?'<1 ms':ms+' ms',color:ms<150?'good':ms<=300?'warn':'bad'};
+    return {text:ms===0?'<1 ms':ms+' ms',color:stale?'unknown':ms<150?'good':ms<=300?'warn':'bad',...details};
   }
   const categoryLabels={China:'国内', 'HK-Broker':'港澳证券（HK-Broker）',AI:'AI 服务（OpenAI / Claude / Gemini）',YouTube:'YouTube',TikTok:'TikTok',Netflix:'Netflix',GitHub:'GitHub',Google:'Google',Microsoft:'Microsoft',Apple:'Apple',Telegram:'Telegram',Final:'其他流量（Final 兜底）'};
   const el=(tag,props={},text='')=>{const node=document.createElement(tag);Object.assign(node,props);if(text)node.textContent=text;return node};
+  function nodeLatencyElement(measurement,url,now=Date.now()){
+    const view=latencyPresentation(measurement,now),row=el('span',{className:'node-latency-row',style:'display:flex;align-items:baseline;gap:6px;flex-wrap:wrap'});
+    row.append(el('span',{className:'node-latency latency-'+view.color},view.text));
+    if(Number.isFinite(view.checkedAt)){
+      const date=new Date(view.checkedAt),sameDay=date.toDateString()===new Date(now).toDateString(),time=date.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false}),label=(view.stale?'已过期 · ':'更新 ')+(sameDay?'':date.toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'})+' ')+time;
+      row.append(el('span',{className:'choice-meta'},label));
+      row.title='HTTP 延迟 · '+(url||'尚未加载地址')+' · '+date.toLocaleString()+(view.stale?' · 保留上次结果，请重新测速':'');
+    }else row.title='HTTP 延迟 · '+(url||'尚未加载地址');
+    return row;
+  }
   async function api(path,method='GET',body){
     const options={method,credentials:'same-origin',cache:'no-store',headers:{}};
     if(body!==undefined){options.headers['Content-Type']='application/json';options.body=JSON.stringify(body)}
@@ -89,7 +100,7 @@
     for(const [url,label] of [['http://cp.cloudflare.com','Cloudflare（默认）'],['https://www.gstatic.com/generate_204','Google'],['http://www.msftconnecttest.com/connecttest.txt','Microsoft'],['custom','自定义地址']])addOption(speedPreset,url,label);
     const presetLabel=el('label',{className:'field'}),urlLabel=el('label',{className:'field'});presetLabel.append(el('span',{},'测速地址'),speedPreset);urlLabel.append(el('span',{},'自定义 HTTP / HTTPS 地址'),speedURL);speedFields.append(presetLabel,urlLabel);
     const speedActions=el('div',{className:'actions'});speedActions.append(speedSave,speedRun,speedReload);
-    speedPanel.append(el('span',{className:'routing-label'},'节点延迟测速'),el('p',{className:'help'},'经过代理节点的 HTTP 延迟，不是下载带宽。绿：<150 ms；黄：150–300 ms；红：>300 ms 或连接失败。结果 5 分钟后变灰。'),speedFields,speedActions,speedStatus);nodes.prepend(speedPanel);
+    speedPanel.append(el('span',{className:'routing-label'},'节点延迟测速'),el('p',{className:'help'},'点击“开始测速”，结果显示在下方每个候选节点旁。绿：<150 ms；黄：150–300 ms；红：>300 ms 或连接失败。5 分钟后保留最后结果并标为过期。测量的是 HTTP 延迟，不是下载带宽。'),speedFields,speedActions,speedStatus);nodes.prepend(speedPanel);
     let speedState={url:'',results:[]},speedBusy=false,speedLoaded=false;
     function presetChanged(){speedURL.disabled=speedPreset.value!=='custom';urlLabel.classList.toggle('hidden',speedPreset.value!=='custom');}speedPreset.addEventListener('change',presetChanged);presetChanged();
     function speedButtons(){speedSave.disabled=speedBusy;speedRun.disabled=speedBusy||!!speedState.running;speedReload.disabled=speedBusy;speedPreset.disabled=speedBusy;speedURL.disabled=speedBusy||speedPreset.value!=='custom'}
@@ -109,7 +120,7 @@
         const selected=editMode==='failover'?backupDraft[backupSlot]===item.id:draftPreference===item.id;
         const button=el('button',{type:'button',className:'choice-button actual-node-button'+(selected?' active':'')});button.setAttribute('aria-pressed',String(selected));
         button.append(el('span',{className:'choice-title'},item.name||item.id));if(item.region)button.append(el('span',{className:'choice-meta'},item.region+' · '+(editMode==='failover'?'点选为'+['主用','备用 1','备用 2'][backupSlot]:'点选为固定节点')));
-        const measurement=(speedState.results||[]).find(r=>r.id===item.id),view=latencyPresentation(measurement),latency=el('span',{className:'node-latency latency-'+view.color},view.text);latency.title='HTTP 延迟 · '+(speedState.url||'尚未加载地址')+(measurement?.checked_at?' · '+new Date(measurement.checked_at).toLocaleString():'');button.append(latency);
+        const measurement=(speedState.results||[]).find(r=>r.id===item.id);button.append(nodeLatencyElement(measurement,speedState.url));
         button.addEventListener('click',()=>{
           if(editMode==='failover'){
             if(backupDraft.includes(item.id)&&backupDraft[backupSlot]!==item.id){nFeedback.textContent='同一个节点不能同时担任主用和备用。';nFeedback.className='notice warn';return}

@@ -1,6 +1,8 @@
 # TY Gateway 开发交接（公开版）
 
-更新：2026-10-02；本轮 v0.8.10 Pilot。以 [功能清单](FEATURES.md) 区分代码实现与实机验收，不得把历史讨论当作已完成功能。
+更新：2026-10-02；本轮 v0.8.11 Pilot。以 [功能清单](FEATURES.md) 区分代码实现与实机验收，不得把历史讨论当作已完成功能。
+
+v0.8.11 仅修测速日志识别与节点显示：兼容实机 `DEBUG Connectivity Check`，保留 TCP/IPv4 与脱敏限制；节点旁展示彩色延迟和更新时间，过期仍保留最后值并标记灰色。针对性采集/恢复检查及六项真实页面函数检查通过；实机单轮结果确认待执行。不新增自动测速、不改分流、DHCP 或其他功能。公开首页与 Release 保持简短，详见 [测速边界](NODE-LATENCY.md)。
 
 v0.8.10 只在 DHCP-enabled 配置中新增 `dhcp-authoritative`，保留原关闭主路由确认、其他 DHCP 探测、DNS 与地址池设置；见 [DHCP 接管](LAN-DHCP-AUTHORITY.md)。6 项 DHCP 检查和 11 项既有 DNS 检查通过。当前实机小补丁部署后，源文件匹配、原配置仅多一行、设置和 DNS 字节不变、19 条有效租约保留，服务正常。没有再做旧租约迁移复现，不得称权威模式能主动修改所有电脑的当前网关。新安装保存 DHCP 时生效；已有设备升级不会覆写旧 `lan.conf`，缺指令时用原参数保存一次。
 
@@ -22,7 +24,7 @@ v0.8.9 Pilot 已发布，包由干净提交 `4f885561c05659c8ad368d6335676c2dc9f
 
 本仓库为 `tikkacn/TY-Gateway`。此前 `release/` 忽略规则误排除了 `internal/release/`：已发布二进制含有模块，但克隆源码不完整。本轮修复为根目录忽略，并纳入升级验签、下载、安全解包源码及测试。
 
-Agent 默认版本及 Windows/Linux 设备构建脚本统一为 0.8.10。发布包须由干净提交构建，记录对应提交；不得从旧 `work/oec-dist` 默认目录混用历史二进制。构建 ARM64 Agent、local UI、DAE helper、release-fetch，加固定官方 FRPC；签名私钥只在 Cloud 主机上使用，不下载进开发目录。
+Agent 默认版本及 Windows/Linux 设备构建脚本统一为 0.8.11。发布包须由干净提交构建，记录对应提交；不得从旧 `work/oec-dist` 默认目录混用历史二进制。构建 ARM64 Agent、local UI、DAE helper、release-fetch，加固定官方 FRPC；签名私钥只在 Cloud 主机上使用，不下载进开发目录。
 
 `scripts/prepare-oec-bootstrap.py` 对比独立验签器与签名包内验签器，生成固定版本 bootstrap。本轮 GitHub-only Pilot；不改 R2、Guide 或 soft.uutec.net。DAE v2.1.1 官方 ARM64 包由设备下载并检查固定 SHA-256，不随 TY Gateway Release 再分发。
 

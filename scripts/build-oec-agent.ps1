@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$OutputDirectory = "work/oec-dist",
-    [string]$Version = "0.8.10",
+    [string]$Version = "0.8.11",
     [string]$ReleaseGithubRepo = 'tikkacn/TY-Gateway'
 )
 
