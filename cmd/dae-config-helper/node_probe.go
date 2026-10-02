@@ -96,6 +96,12 @@ func runNodeProbe(ctx context.Context, req nodeprobe.Request, env probeEnvironme
 	if err != nil {
 		return nil, err
 	}
+	// Warm reloads defer their first check by check_interval. Shorten that
+	// delay only for this manual observation; the exact original is restored.
+	debug, err = setDiagnosticGlobalField(debug, "check_interval", "5s")
+	if err != nil {
+		return nil, err
+	}
 	backup, _ := json.Marshal(probeRestore{Original: original.data, CandidateHash: probeHash(debug)})
 	if err := atomicWrite(env.marker, backup, 0600); err != nil {
 		return nil, err
@@ -145,9 +151,20 @@ func runNodeProbe(ctx context.Context, req nodeprobe.Request, env probeEnvironme
 }
 
 func collectNativeChecks(ctx context.Context, since time.Time) ([]nodeprobe.Observation, error) {
-	// Bounded journal slice; only sanitized observations escape this helper.
-	out, err := run(ctx, "/usr/bin/journalctl", "-b", "-u", "dae", "--since", "@"+strconv.FormatInt(since.Unix(), 10), "-o", "json", "--no-pager", "-n", "2000")
+	return collectNativeChecksWith(ctx, since, run)
+}
+
+func collectNativeChecksWith(ctx context.Context, since time.Time, command daeCommandRunner) ([]nodeprobe.Observation, error) {
+	// Filter before applying the limit. Busy DEBUG traffic must not evict health
+	// checks from the bounded slice, and traffic records need not leave journald.
+	out, err := command(ctx, "/usr/bin/journalctl", "-b", "-u", "dae", "--since", "@"+strconv.FormatInt(since.Unix(), 10), "--grep", "Connectivity Check", "-o", "json", "--no-pager", "-n", "2000")
 	if err != nil {
+		// journalctl --grep returns 1 when there are no matches. That is a
+		// normal observation window, not a service/read failure.
+		var exit interface{ ExitCode() int }
+		if errors.As(err, &exit) && exit.ExitCode() == 1 && len(bytes.TrimSpace(out)) == 0 {
+			return nil, nil
+		}
 		return nil, err
 	}
 	var result []nodeprobe.Observation

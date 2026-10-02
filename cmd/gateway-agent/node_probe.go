@@ -212,14 +212,28 @@ func (a *agent) localNodeProbe(ctx context.Context, method, path string, body js
 	for _, obs := range observations {
 		byName[obs.Name] = obs
 	}
+	previous := make(map[string]nodeprobe.Result, len(saved.Results))
+	for _, result := range saved.Results {
+		previous[result.ID] = result
+	}
 	saved.Results = []nodeprobe.Result{}
+	updated := 0
 	for _, node := range inventory.Nodes {
 		result := nodeprobe.Result{ID: node.ID, Status: "unknown"}
-		if obs, ok := byName[node.Name]; ok && (obs.Status == "failed" || obs.Status == "ok" && obs.LatencyMS != nil && *obs.LatencyMS >= 0 && *obs.LatencyMS <= 600000) {
+		// No new observation is not evidence that an earlier real result is
+		// invalid. Keep its original timestamp; never stamp old latency as new.
+		if old, ok := previous[node.ID]; ok && old.CheckedAt != nil && !old.CheckedAt.IsZero() && (old.Status == "failed" || old.Status == "ok" && old.LatencyMS != nil && *old.LatencyMS >= 0 && *old.LatencyMS <= 600000) {
+			result = old
+		}
+		if obs, ok := byName[node.Name]; ok && !obs.CheckedAt.IsZero() && (obs.Status == "failed" || obs.Status == "ok" && obs.LatencyMS != nil && *obs.LatencyMS >= 0 && *obs.LatencyMS <= 600000) {
 			at := obs.CheckedAt
 			result.Status, result.LatencyMS, result.CheckedAt = obs.Status, obs.LatencyMS, &at
+			updated++
 		}
 		saved.Results = append(saved.Results, result)
+	}
+	if updated == 0 {
+		return localControlResponse{Error: "本次未获取到新的节点测速结果；上次结果已保留，请稍后重试。"}
 	}
 	saved.CheckedAt = time.Now().UTC()
 	if a.saveNodeProbe(saved) != nil {

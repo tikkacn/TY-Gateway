@@ -549,6 +549,14 @@ func setGlobalLogLevel(config []byte, level string) ([]byte, error) {
 	default:
 		return nil, errors.New("invalid dae log level")
 	}
+	return setDiagnosticGlobalField(config, "log_level", level)
+}
+
+// Only fixed diagnostic fields/values enter here; this is not a config API.
+func setDiagnosticGlobalField(config []byte, key, value string) ([]byte, error) {
+	if key != "log_level" && (key != "check_interval" || value != "5s") {
+		return nil, errors.New("invalid diagnostic global field")
+	}
 	lines := strings.SplitAfter(string(config), "\n")
 	foundGlobal := false
 	for i, raw := range lines {
@@ -561,21 +569,29 @@ func setGlobalLogLevel(config []byte, level string) ([]byte, error) {
 		lineNoComment := strings.SplitN(content, "#", 2)[0]
 		clean := strings.TrimSpace(lineNoComment)
 		if !foundGlobal {
+			if clean == "global {}" || clean == "global { }" {
+				comment := ""
+				if at := strings.IndexByte(content, '#'); at >= 0 {
+					comment = " " + content[at:]
+				}
+				lines[i] = "global {\n  " + key + ": " + value + "\n}" + comment + ending
+				return []byte(strings.Join(lines, "")), nil
+			}
 			if clean == "global {" {
 				foundGlobal = true
 			}
 			continue
 		}
-		if strings.HasPrefix(clean, "log_level") {
+		if strings.HasPrefix(clean, key+":") || strings.HasPrefix(clean, key+" ") {
 			colon := strings.IndexByte(lineNoComment, ':')
 			if colon < 0 {
-				return nil, errors.New("invalid dae log_level field")
+				return nil, errors.New("invalid dae diagnostic field")
 			}
 			comment := ""
 			if at := strings.IndexByte(content, '#'); at >= 0 {
 				comment = " " + content[at:]
 			}
-			lines[i] = lineNoComment[:colon+1] + " " + level + comment + ending
+			lines[i] = lineNoComment[:colon+1] + " " + value + comment + ending
 			return []byte(strings.Join(lines, "")), nil
 		}
 		if clean == "}" {
@@ -583,14 +599,14 @@ func setGlobalLogLevel(config []byte, level string) ([]byte, error) {
 			if strings.HasSuffix(raw, "\r\n") {
 				ending = "\r\n"
 			}
-			lines = append(lines[:i], append([]string{"  log_level: " + level + ending}, lines[i:]...)...)
+			lines = append(lines[:i], append([]string{"  " + key + ": " + value + ending}, lines[i:]...)...)
 			return []byte(strings.Join(lines, "")), nil
 		}
 	}
 	if foundGlobal {
 		return nil, errors.New("unterminated dae global section")
 	}
-	prefix := "global {\n  log_level: " + level + "\n}\n\n"
+	prefix := "global {\n  " + key + ": " + value + "\n}\n\n"
 	return []byte(prefix + string(config)), nil
 }
 

@@ -7,12 +7,47 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"tygateway/internal/nodeprobe"
 )
+
+type probeJournalExit int
+
+func (e probeJournalExit) Error() string { return "journal exit" }
+func (e probeJournalExit) ExitCode() int { return int(e) }
+
+func TestProbeJournalFiltersTrafficBeforeLimitAndHandlesEmptyWindows(t *testing.T) {
+	since := time.Now().UTC().Truncate(time.Second)
+	line, _ := json.Marshal(map[string]string{"MESSAGE": `DEBUG Connectivity Check last=74ms network=tcp4 node=test`, "__REALTIME_TIMESTAMP": strconv.FormatInt(since.Add(time.Millisecond).UnixMicro(), 10)})
+	for _, test := range []struct {
+		name      string
+		output    []byte
+		err       error
+		wantError bool
+		count     int
+	}{
+		{"checks", line, nil, false, 1},
+		{"no matches", nil, probeJournalExit(1), false, 0},
+		{"read error", nil, probeJournalExit(2), true, 0},
+		{"exit with diagnostic", []byte("permission denied"), probeJournalExit(1), true, 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := collectNativeChecksWith(context.Background(), since, func(_ context.Context, path string, args ...string) ([]byte, error) {
+				if path != "/usr/bin/journalctl" || !strings.Contains(strings.Join(args, "|"), "--grep|Connectivity Check") || !strings.Contains(strings.Join(args, "|"), "-n|2000") {
+					t.Fatalf("unbounded or unfiltered journal command: %s %v", path, args)
+				}
+				return test.output, test.err
+			})
+			if (err != nil) != test.wantError || len(got) != test.count {
+				t.Fatalf("got=%v err=%v", got, err)
+			}
+		})
+	}
+}
 
 func TestProbeRestoresOriginalConfigOnSuccessAndFailure(t *testing.T) {
 	for _, fault := range []string{"", "validate", "reload", "journal"} {
@@ -25,6 +60,12 @@ func TestProbeRestoresOriginalConfigOnSuccessAndFailure(t *testing.T) {
 			}
 			reloads := 0
 			env.run = func(_ context.Context, path string, args ...string) ([]byte, error) {
+				if strings.HasSuffix(path, "/dae") {
+					candidate, _ := os.ReadFile(env.config)
+					if !strings.Contains(string(candidate), "check_interval: 5s") {
+						t.Fatal("manual check retains the long periodic delay")
+					}
+				}
 				if strings.HasSuffix(path, "/dae") && fault == "validate" {
 					return nil, errors.New("bad config")
 				}
@@ -58,6 +99,19 @@ func TestProbeRestoresOriginalConfigOnSuccessAndFailure(t *testing.T) {
 				t.Fatal("restore marker not removed")
 			}
 		})
+	}
+}
+
+func TestProbeDiagnosticConfigSupportsBootstrapInlineGlobal(t *testing.T) {
+	for _, original := range []string{"global {}\ninclude { other.dae }\n", "global { } # bootstrap\ninclude { other.dae }\n", "global {\n  log_level: info\n  check_interval: 30s\n}\ninclude { other.dae }\n"} {
+		debug, err := setGlobalLogLevel([]byte(original), "debug")
+		if err != nil {
+			t.Fatal(err)
+		}
+		debug, err = setDiagnosticGlobalField(debug, "check_interval", "5s")
+		if err != nil || strings.Count(string(debug), "global {") != 1 || !strings.Contains(string(debug), "check_interval: 5s") || !strings.Contains(string(debug), "log_level: debug") || !strings.Contains(string(debug), "include { other.dae }") {
+			t.Fatalf("invalid diagnostic bootstrap config: %s %v", debug, err)
+		}
 	}
 }
 func TestProbeNeverStartsInactiveDAE(t *testing.T) {

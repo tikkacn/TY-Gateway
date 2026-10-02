@@ -23,10 +23,10 @@ test('actual UI uses green/yellow/red at the existing boundaries', () => {
     assert.equal(view.stale,false);
   }
 });
-test('expired result retains last latency and timestamp without looking current', () => {
+test('older result retains latency color and original timestamp without looking current', () => {
   const view=context.present(result(122,300001),now);
   assert.equal(view.text,'122 ms');
-  assert.equal(view.color,'unknown');
+  assert.equal(view.color,'good');
   assert.equal(view.stale,true);
   assert.equal(view.checkedAt,now-300001);
 });
@@ -36,7 +36,7 @@ test('failed results stay distinct from unmeasured and stale failures', () => {
   assert.equal(context.present(fresh,now).color,'bad');
   const stale={...fresh,checked_at:new Date(now-600000).toISOString()};
   assert.equal(context.present(stale,now).text,'连接失败');
-  assert.equal(context.present(stale,now).color,'unknown');
+  assert.equal(context.present(stale,now).color,'bad');
 });
 test('missing, invalid, or future observations never turn into zero latency', () => {
   for (const value of [null,{status:'unknown'},result(-1),{...result(42),latency_ms:null}]) {
@@ -55,10 +55,10 @@ test('real node element visibly renders value, color, and update time', () => {
   assert.match(row.children[1].textContent,/^更新 \d{2}:\d{2}$/);
   assert.match(row.title,/HTTP 延迟/);
 });
-test('expired node element keeps number and visibly marks expiry', () => {
+test('older node element keeps color and visibly marks its original update time', () => {
   const row=context.make(result(122,600000),'http://cp.cloudflare.com',now);
   assert.equal(row.children[0].textContent,'122 ms');
-  assert.equal(row.children[0].className,'node-latency latency-unknown');
-  assert.match(row.children[1].textContent,/^已过期 · \d{2}:\d{2}$/);
-  assert.match(row.title,/保留上次结果/);
+  assert.equal(row.children[0].className,'node-latency latency-good');
+  assert.match(row.children[1].textContent,/^上次 · \d{2}:\d{2}$/);
+  assert.match(row.title,/保留上次真实结果，不代表当前延迟/);
 });

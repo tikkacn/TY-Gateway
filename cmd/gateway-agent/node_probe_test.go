@@ -100,3 +100,64 @@ func TestNodeProbeAddressApplyFailureRollsBack(t *testing.T) {
 		t.Fatalf("failed address not rolled back: %#v calls=%d target=%s", response, f.calls, a.localCheckTarget())
 	}
 }
+
+func TestNodeProbePartialAndEmptyRunsRetainRealResultsAndTimestamps(t *testing.T) {
+	oldAt := time.Now().UTC().Add(-10 * time.Minute)
+	newAt := time.Now().UTC()
+	oldMS, newMS := int64(75), int64(155)
+	for _, mode := range []string{"partial", "empty", "failure"} {
+		t.Run(mode, func(t *testing.T) {
+			f := &fakeNodeProber{}
+			if mode == "partial" {
+				f.observations = []nodeprobe.Observation{{Name: "one", Status: "ok", LatencyMS: &newMS, CheckedAt: newAt}}
+			}
+			if mode == "failure" {
+				f.observations = []nodeprobe.Observation{{Name: "one", Status: "failed", CheckedAt: newAt}}
+			}
+			a := &agent{stateDir: t.TempDir(), state: credentialState{DeviceID: "device"}, daeApplier: f, localProxyOn: true, proxyApplied: true, policyReady: true}
+			config := model.DeviceConfig{Device: model.CustomerDevice{ID: "device"}, Profile: "gfw_precise", ConfigVersion: 1, Nodes: []model.Node{{ID: "n1", Name: "one"}, {ID: "n2", Name: "two"}, {ID: "n3", Name: "never measured"}}}
+			customer := []byte(`{"device":{"id":"device","config_version":1},"nodes":[{"id":"n1","name":"one"},{"id":"n2","name":"two"},{"id":"n3","name":"never measured"}]}`)
+			if err := a.saveAppliedSnapshot(config, customer, "sub"); err != nil {
+				t.Fatal(err)
+			}
+			saved := defaultNodeProbe()
+			saved.CheckedAt = oldAt
+			saved.Results = []nodeprobe.Result{{ID: "n1", Status: "ok", LatencyMS: &oldMS, CheckedAt: &oldAt}, {ID: "n2", Status: "ok", LatencyMS: &oldMS, CheckedAt: &oldAt}, {ID: "removed", Status: "ok", LatencyMS: &oldMS, CheckedAt: &oldAt}}
+			if err := a.saveNodeProbe(saved); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := os.ReadFile(filepath.Join(a.stateDir, nodeProbeFile))
+			reply := a.localNodeProbe(context.Background(), http.MethodPost, "/speed-test/run", json.RawMessage(`{}`))
+			after, _ := os.ReadFile(filepath.Join(a.stateDir, nodeProbeFile))
+			if mode == "empty" {
+				if reply.Error == "" || string(before) != string(after) {
+					t.Fatal("empty run cleared or restamped saved observations")
+				}
+				return
+			}
+			if reply.Error != "" {
+				t.Fatal(reply.Error)
+			}
+			got, err := a.loadNodeProbe()
+			if err != nil || len(got.Results) != 3 {
+				t.Fatalf("wrong inventory: %v %v", got, err)
+			}
+			if got.Results[0].CheckedAt == nil || !got.Results[0].CheckedAt.Equal(newAt) {
+				t.Fatal("new observation not updated")
+			}
+			if mode == "failure" && (got.Results[0].Status != "failed" || got.Results[0].LatencyMS != nil) {
+				t.Fatal("real failure masked by old success")
+			}
+			if mode == "partial" && (got.Results[0].LatencyMS == nil || *got.Results[0].LatencyMS != newMS) {
+				t.Fatal("new latency missing")
+			}
+			retained := got.Results[1]
+			if retained.LatencyMS == nil || *retained.LatencyMS != oldMS || retained.CheckedAt == nil || !retained.CheckedAt.Equal(oldAt) {
+				t.Fatal("unobserved node was cleared or restamped")
+			}
+			if got.Results[2].ID != "n3" || got.Results[2].Status != "unknown" || got.Results[2].LatencyMS != nil {
+				t.Fatal("invented a result for an unmeasured node")
+			}
+		})
+	}
+}
