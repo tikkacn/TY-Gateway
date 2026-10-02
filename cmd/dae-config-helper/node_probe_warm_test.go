@@ -1,11 +1,35 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"strconv"
 	"testing"
 	"time"
 
 	"tygateway/internal/nodeprobe"
 )
+
+func TestProbeWarmupUsesActualReloadCompletionWithFormattingAndReverseRows(t *testing.T) {
+	since := time.Date(2026, 10, 2, 4, 0, 0, 0, time.UTC)
+	var lines []byte
+	for _, row := range []struct {
+		at  time.Time
+		msg string
+	}{
+		{since.Add(12 * time.Second), "INFO [Reload] Finished"},
+		{since.Add(7 * time.Second), "DEBUG Connectivity Check last=43ms network=tcp4 node=hk"},
+		{since.Add(time.Second), "INFO \x1b[36m[Reload]\x1b[0m    Finished"},
+		{since.Add(-time.Second), "INFO [Reload] Finished"},
+	} {
+		line, _ := json.Marshal(map[string]string{"MESSAGE": row.msg, "__REALTIME_TIMESTAMP": strconv.FormatInt(row.at.UnixMicro(), 10)})
+		lines = append(append(lines, line...), '\n')
+	}
+	batch, err := collectNativeProbeBatchWith(context.Background(), since, func(_ context.Context, _ string, _ ...string) ([]byte, error) { return lines, nil })
+	if err != nil || !batch.ReloadedAt.Equal(since.Add(time.Second)) || len(batch.Observations) != 1 || *batch.Observations[0].LatencyMS != 43 {
+		t.Fatalf("wrong diagnostic-generation boundary: %#v %v", batch, err)
+	}
+}
 
 func TestProbeWarmupRequiresDistinctSeparatedNativeChecks(t *testing.T) {
 	since := time.Date(2026, 10, 2, 4, 0, 0, 0, time.UTC)

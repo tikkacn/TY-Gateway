@@ -50,7 +50,7 @@ func TestProbeJournalFiltersTrafficBeforeLimitAndHandlesEmptyWindows(t *testing.
 }
 
 func TestProbeRestoresOriginalConfigOnSuccessAndFailure(t *testing.T) {
-	for _, fault := range []string{"", "validate", "reload", "journal"} {
+	for _, fault := range []string{"", "validate", "reload", "journal", "generation"} {
 		t.Run(fault, func(t *testing.T) {
 			dir := t.TempDir()
 			original := []byte("global {\n  log_level: info\n}\n")
@@ -77,16 +77,21 @@ func TestProbeRestoresOriginalConfigOnSuccessAndFailure(t *testing.T) {
 				}
 				return nil, nil
 			}
-			env.collect = func(_ context.Context, since time.Time) ([]nodeprobe.Observation, error) {
+			env.collect = func(_ context.Context, since time.Time) (nativeProbeBatch, error) {
 				if fault == "journal" {
-					return nil, errors.New("journal unavailable")
+					return nativeProbeBatch{}, errors.New("journal unavailable")
 				}
 				ms := int64(46)
 				first := int64(189)
-				return []nodeprobe.Observation{
-					{Name: "香港 节点", Status: "ok", LatencyMS: &first, CheckedAt: since.Add(time.Millisecond)},
-					{Name: "香港 节点", Status: "ok", LatencyMS: &ms, CheckedAt: since.Add(6 * time.Second)},
-				}, nil
+				ready := since.Add(3 * time.Second)
+				if fault == "generation" {
+					ready = time.Time{}
+				}
+				return nativeProbeBatch{ReloadedAt: ready, Observations: []nodeprobe.Observation{
+					{Name: "香港 节点", Status: "ok", LatencyMS: &ms, CheckedAt: since.Add(time.Millisecond)}, // old generation
+					{Name: "香港 节点", Status: "ok", LatencyMS: &first, CheckedAt: since.Add(4 * time.Second)},
+					{Name: "香港 节点", Status: "ok", LatencyMS: &ms, CheckedAt: since.Add(10 * time.Second)},
+				}}, nil
 			}
 			obs, err := runNodeProbe(context.Background(), nodeprobe.Request{Names: []string{"香港 节点", "未观测节点"}}, env)
 			if (err != nil) != (fault != "") {
@@ -172,9 +177,9 @@ func TestProbeRestoreReloadFailureDoesNotReturnSuccess(t *testing.T) {
 			}
 			return nil, nil
 		},
-		collect: func(_ context.Context, since time.Time) ([]nodeprobe.Observation, error) {
+		collect: func(_ context.Context, since time.Time) (nativeProbeBatch, error) {
 			ms := int64(3)
-			return []nodeprobe.Observation{{Name: "节点", Status: "ok", LatencyMS: &ms, CheckedAt: since.Add(time.Millisecond)}}, nil
+			return nativeProbeBatch{ReloadedAt: since, Observations: []nodeprobe.Observation{{Name: "节点", Status: "ok", LatencyMS: &ms, CheckedAt: since.Add(time.Millisecond)}}}, nil
 		}}
 	_ = atomicWrite(env.config, original, 0600)
 	obs, err := runNodeProbe(context.Background(), nodeprobe.Request{Names: []string{"节点"}}, env)

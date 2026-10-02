@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,11 +21,16 @@ type probeEnvironment struct {
 	config, marker string
 	window         time.Duration
 	run            func(context.Context, string, ...string) ([]byte, error)
-	collect        func(context.Context, time.Time) ([]nodeprobe.Observation, error)
+	collect        func(context.Context, time.Time) (nativeProbeBatch, error)
+}
+
+type nativeProbeBatch struct {
+	ReloadedAt   time.Time
+	Observations []nodeprobe.Observation
 }
 
 func probeEnvironmentDefault() probeEnvironment {
-	return probeEnvironment{config: configPath, marker: managedDir + "/node-probe-restore.json", window: 40 * time.Second, run: run, collect: collectNativeChecks}
+	return probeEnvironment{config: configPath, marker: managedDir + "/node-probe-restore.json", window: 40 * time.Second, run: run, collect: collectNativeProbeBatch}
 }
 
 type probeRestore struct {
@@ -168,21 +174,27 @@ func runNodeProbe(ctx context.Context, req nodeprobe.Request, env probeEnvironme
 	if _, err := env.run(ctx, "/usr/bin/dae", "validate", "-c", env.config); err != nil {
 		return nil, errors.New("diagnostic config validation failed")
 	}
+	since := time.Now().UTC()
 	if _, err := env.run(ctx, "/usr/bin/systemctl", "reload", "dae"); err != nil {
 		return nil, errors.New("diagnostic reload failed")
 	}
-	// Ignore records produced while the replacement generation was being
-	// prepared. Warm-up starts only after the reload command has completed.
-	since := time.Now().UTC()
+	// The new generation can check immediately after becoming ready, before
+	// ExecReload's compatibility hook returns. Use DAE's completion record,
+	// not the later systemctl return time, or that first warm-up gets lost.
 	deadline := time.Now().Add(env.window)
-	warmed := newWarmedProbeResults(since, names)
+	var warmed *warmedProbeResults
 	for {
 		batch, readErr := env.collect(ctx, since)
 		if readErr != nil {
 			return nil, errors.New("dae check journal unavailable")
 		}
-		warmed.collect(batch)
-		if len(warmed.results) == len(names) || time.Now().After(deadline) {
+		if warmed == nil && !batch.ReloadedAt.IsZero() && !batch.ReloadedAt.Before(since) {
+			warmed = newWarmedProbeResults(batch.ReloadedAt, names)
+		}
+		if warmed != nil {
+			warmed.collect(batch.Observations)
+		}
+		if warmed != nil && len(warmed.results) == len(names) || time.Now().After(deadline) {
 			break
 		}
 		select {
@@ -190,6 +202,9 @@ func runNodeProbe(ctx context.Context, req nodeprobe.Request, env probeEnvironme
 			return nil, ctx.Err()
 		case <-time.After(time.Second):
 		}
+	}
+	if warmed == nil {
+		return nil, errors.New("completed diagnostic generation was not observed")
 	}
 	for _, name := range req.Names {
 		if obs, ok := warmed.results[name]; ok {
@@ -199,24 +214,32 @@ func runNodeProbe(ctx context.Context, req nodeprobe.Request, env probeEnvironme
 	return observations, nil
 }
 
-func collectNativeChecks(ctx context.Context, since time.Time) ([]nodeprobe.Observation, error) {
-	return collectNativeChecksWith(ctx, since, run)
+func collectNativeProbeBatch(ctx context.Context, since time.Time) (nativeProbeBatch, error) {
+	return collectNativeProbeBatchWith(ctx, since, run)
 }
 
 func collectNativeChecksWith(ctx context.Context, since time.Time, command daeCommandRunner) ([]nodeprobe.Observation, error) {
+	batch, err := collectNativeProbeBatchWith(ctx, since, command)
+	return batch.Observations, err
+}
+
+var probeANSI = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
+var probeReloadFinished = regexp.MustCompile(`\[Reload\]\s+Finished\b`)
+
+func collectNativeProbeBatchWith(ctx context.Context, since time.Time, command daeCommandRunner) (nativeProbeBatch, error) {
 	// Filter before applying the limit. Busy DEBUG traffic must not evict health
 	// checks from the bounded slice, and traffic records need not leave journald.
-	out, err := command(ctx, "/usr/bin/journalctl", "-b", "-u", "dae", "--since", "@"+strconv.FormatInt(since.Unix(), 10), "--grep", "Connectivity Check", "-o", "json", "--no-pager", "-n", "2000")
+	out, err := command(ctx, "/usr/bin/journalctl", "-b", "-u", "dae", "--since", "@"+strconv.FormatInt(since.Unix(), 10), "--grep", "Connectivity Check|Reload", "-o", "json", "--no-pager", "-n", "2000")
 	if err != nil {
 		// journalctl --grep returns 1 when there are no matches. That is a
 		// normal observation window, not a service/read failure.
 		var exit interface{ ExitCode() int }
 		if errors.As(err, &exit) && exit.ExitCode() == 1 && len(bytes.TrimSpace(out)) == 0 {
-			return nil, nil
+			return nativeProbeBatch{}, nil
 		}
-		return nil, err
+		return nativeProbeBatch{}, err
 	}
-	var result []nodeprobe.Observation
+	var result nativeProbeBatch
 	for _, line := range bytes.Split(out, []byte{'\n'}) {
 		var entry struct {
 			Message string `json:"MESSAGE"`
@@ -233,8 +256,12 @@ func collectNativeChecksWith(ctx context.Context, since time.Time, command daeCo
 		if at.Before(since) {
 			continue
 		}
-		if obs, ok := nodeprobe.ParseMessage(entry.Message, at); ok {
-			result = append(result, obs)
+		message := probeANSI.ReplaceAllString(entry.Message, "")
+		if probeReloadFinished.MatchString(message) && (result.ReloadedAt.IsZero() || at.Before(result.ReloadedAt)) {
+			result.ReloadedAt = at
+		}
+		if obs, ok := nodeprobe.ParseMessage(message, at); ok {
+			result.Observations = append(result.Observations, obs)
 		}
 	}
 	return result, nil
