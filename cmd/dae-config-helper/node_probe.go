@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,56 @@ func probeEnvironmentDefault() probeEnvironment {
 type probeRestore struct {
 	Original      []byte `json:"original"`
 	CandidateHash string `json:"candidate_hash"`
+}
+
+// Use a later native HTTP check, not the first connection after a reload.
+// A full diagnostic check interval separates warm-up from measurement and
+// prevents replayed journal entries or near-simultaneous checks from counting
+// as the measured round. This does not change DAE's routing/selection policy.
+const probeWarmupSeparation = 5 * time.Second
+
+type warmedProbeResults struct {
+	since   time.Time
+	names   map[string]bool
+	seen    map[string]time.Time
+	warmAt  map[string]time.Time
+	results map[string]nodeprobe.Observation
+}
+
+func newWarmedProbeResults(since time.Time, names map[string]bool) *warmedProbeResults {
+	return &warmedProbeResults{since: since, names: names, seen: map[string]time.Time{}, warmAt: map[string]time.Time{}, results: map[string]nodeprobe.Observation{}}
+}
+
+func (p *warmedProbeResults) collect(batch []nodeprobe.Observation) {
+	// journalctl output order is not an API guarantee. Sort a copy, and dedupe
+	// by the native timestamp across polls rather than by collection time.
+	ordered := append([]nodeprobe.Observation(nil), batch...)
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].CheckedAt.Before(ordered[j].CheckedAt) })
+	for _, obs := range ordered {
+		if !p.names[obs.Name] || obs.CheckedAt.Before(p.since) || !obs.CheckedAt.After(p.seen[obs.Name]) {
+			continue
+		}
+		if obs.Status != "failed" && (obs.Status != "ok" || obs.LatencyMS == nil || *obs.LatencyMS < 0 || *obs.LatencyMS > 600000) {
+			continue
+		}
+		p.seen[obs.Name] = obs.CheckedAt
+		if obs.Status == "failed" {
+			// Failure is real evidence even if warm-up never succeeded. A later
+			// recovery must warm up again, not inherit an older good connection.
+			delete(p.warmAt, obs.Name)
+			obs.LatencyMS = nil
+			p.results[obs.Name] = obs
+			continue
+		}
+		if p.warmAt[obs.Name].IsZero() {
+			p.warmAt[obs.Name] = obs.CheckedAt
+			delete(p.results, obs.Name)
+			continue
+		}
+		if obs.CheckedAt.Sub(p.warmAt[obs.Name]) >= probeWarmupSeparation {
+			p.results[obs.Name] = obs // Keep the real measurement, not a minimum.
+		}
+	}
 }
 
 func probeHash(data []byte) string { hash := sha256.Sum256(data); return hex.EncodeToString(hash[:]) }
@@ -117,23 +168,21 @@ func runNodeProbe(ctx context.Context, req nodeprobe.Request, env probeEnvironme
 	if _, err := env.run(ctx, "/usr/bin/dae", "validate", "-c", env.config); err != nil {
 		return nil, errors.New("diagnostic config validation failed")
 	}
-	since := time.Now().UTC()
 	if _, err := env.run(ctx, "/usr/bin/systemctl", "reload", "dae"); err != nil {
 		return nil, errors.New("diagnostic reload failed")
 	}
+	// Ignore records produced while the replacement generation was being
+	// prepared. Warm-up starts only after the reload command has completed.
+	since := time.Now().UTC()
 	deadline := time.Now().Add(env.window)
-	latest := map[string]nodeprobe.Observation{}
+	warmed := newWarmedProbeResults(since, names)
 	for {
 		batch, readErr := env.collect(ctx, since)
 		if readErr != nil {
 			return nil, errors.New("dae check journal unavailable")
 		}
-		for _, obs := range batch {
-			if names[obs.Name] && !obs.CheckedAt.Before(since) && (latest[obs.Name].CheckedAt.IsZero() || obs.CheckedAt.After(latest[obs.Name].CheckedAt)) {
-				latest[obs.Name] = obs
-			}
-		}
-		if len(latest) == len(names) || time.Now().After(deadline) {
+		warmed.collect(batch)
+		if len(warmed.results) == len(names) || time.Now().After(deadline) {
 			break
 		}
 		select {
@@ -143,7 +192,7 @@ func runNodeProbe(ctx context.Context, req nodeprobe.Request, env probeEnvironme
 		}
 	}
 	for _, name := range req.Names {
-		if obs, ok := latest[name]; ok {
+		if obs, ok := warmed.results[name]; ok {
 			observations = append(observations, obs)
 		}
 	}

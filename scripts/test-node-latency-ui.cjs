@@ -20,7 +20,8 @@ for (const [status, ms, color, text] of [
   assert.equal(view.color, color); assert.equal(view.text, text);
 }
 assert.equal(present(undefined, now).text, '未测速');
-assert.equal(present({status:'ok', latency_ms:49, checked_at:new Date(now - 300001).toISOString()}, now).color, 'unknown');
+assert.equal(present({status:'ok', latency_ms:49, checked_at:new Date(now - 300001).toISOString()}, now).color, 'good');
+assert.equal(present({status:'ok', latency_ms:49, checked_at:new Date(now - 300001).toISOString()}, now).stale, true);
 assert.equal(present({status:'ok', latency_ms:49, checked_at:new Date(now + 60001).toISOString()}, now).color, 'unknown');
 for (const route of ['/speed-test', '/speed-test/settings', '/speed-test/run']) assert.ok(html.includes(route));
 for (const color of ['good','warn','bad','unknown']) assert.ok(html.includes('.latency-'+color));

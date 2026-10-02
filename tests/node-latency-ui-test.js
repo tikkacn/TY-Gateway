@@ -15,6 +15,12 @@ vm.runInContext(html.slice(start, end) + '\nglobalThis.present=latencyPresentati
 const now = Date.parse('2026-10-02T01:10:00Z');
 const result = (ms, age=0) => ({status:'ok', latency_ms:ms, checked_at:new Date(now-age).toISOString()});
 
+test('manual probe explains warm-up without changing latency colors or controls', () => {
+  assert.match(html, /先通过 dae 的真实 HTTP 检查预热，再记录后续测量/);
+  assert.match(html, /正在预热并测速/);
+  assert.match(html, /没有正式新结果时保留上次真实结果/);
+});
+
 test('actual UI uses green/yellow/red at the existing boundaries', () => {
   for (const [ms,color] of [[0,'good'],[149,'good'],[150,'warn'],[300,'warn'],[301,'bad']]) {
     const view=context.present(result(ms),now);

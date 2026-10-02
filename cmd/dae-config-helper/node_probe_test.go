@@ -82,7 +82,11 @@ func TestProbeRestoresOriginalConfigOnSuccessAndFailure(t *testing.T) {
 					return nil, errors.New("journal unavailable")
 				}
 				ms := int64(46)
-				return []nodeprobe.Observation{{Name: "香港 节点", Status: "ok", LatencyMS: &ms, CheckedAt: since.Add(time.Millisecond)}}, nil
+				first := int64(189)
+				return []nodeprobe.Observation{
+					{Name: "香港 节点", Status: "ok", LatencyMS: &first, CheckedAt: since.Add(time.Millisecond)},
+					{Name: "香港 节点", Status: "ok", LatencyMS: &ms, CheckedAt: since.Add(6 * time.Second)},
+				}, nil
 			}
 			obs, err := runNodeProbe(context.Background(), nodeprobe.Request{Names: []string{"香港 节点", "未观测节点"}}, env)
 			if (err != nil) != (fault != "") {
