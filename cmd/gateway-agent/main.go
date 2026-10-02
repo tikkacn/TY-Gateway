@@ -29,7 +29,7 @@ import (
 	"tygateway/internal/nodeprobe"
 )
 
-const defaultVersion = "0.8.11"
+const defaultVersion = "0.8.12"
 
 const (
 	localProxyFile = "local-proxy.json"
