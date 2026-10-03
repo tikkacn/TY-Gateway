@@ -108,6 +108,7 @@ required_files=(
   payload/usr/local/libexec/ty_gateway_dae_compat.py
   payload/etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding
   payload/usr/local/libexec/ty-gateway-firstboot
+  payload/usr/local/libexec/ty-gateway-prepare
   payload/usr/local/libexec/ty-gateway-network
   payload/usr/local/libexec/ty_gateway_lan.py
   payload/etc/tmpfiles.d/ty-gateway-lan.conf
@@ -146,6 +147,7 @@ payload_executables=(
   payload/usr/local/libexec/ty-gateway-dae-helper
   payload/usr/local/libexec/ty-gateway-dae-preflight
   payload/usr/local/libexec/ty-gateway-firstboot
+  payload/usr/local/libexec/ty-gateway-prepare
   payload/etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding
 )
 for relative in "${payload_executables[@]}"; do
@@ -240,6 +242,7 @@ declare -a managed_targets=(
   /usr/local/libexec/ty_gateway_dae_compat.py
   /etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding
   /usr/local/libexec/ty-gateway-firstboot
+  /usr/local/libexec/ty-gateway-prepare
   /usr/local/libexec/ty-gateway-network
   /usr/local/libexec/ty_gateway_lan.py
   /etc/tmpfiles.d/ty-gateway-lan.conf
@@ -476,6 +479,7 @@ install -m 0755 "$payload_dir/usr/local/libexec/ty-gateway-dae-preflight" "$(tar
 install -m 0644 "$payload_dir/usr/local/libexec/ty_gateway_dae_compat.py" "$(target /usr/local/libexec/ty_gateway_dae_compat.py)"
 install -m 0755 "$payload_dir/etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding" "$(target /etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding)"
 install -m 0755 "$payload_dir/usr/local/libexec/ty-gateway-firstboot" "$(target /usr/local/libexec/ty-gateway-firstboot)"
+install -m 0755 "$payload_dir/usr/local/libexec/ty-gateway-prepare" "$(target /usr/local/libexec/ty-gateway-prepare)"
 install -m 0755 "$payload_dir/usr/local/libexec/ty-gateway-network" "$(target /usr/local/libexec/ty-gateway-network)"
 install -m 0644 "$payload_dir/usr/local/libexec/ty_gateway_lan.py" "$(target /usr/local/libexec/ty_gateway_lan.py)"
 ensure_directory "$(target /etc/tmpfiles.d)" 0755 root root

@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"tygateway/internal/ruleseed"
 )
 
 type localCustomerResponse struct {
@@ -17,7 +19,16 @@ type localCustomerResponse struct {
 }
 
 func (s *Server) customerMe(w http.ResponseWriter, r *http.Request) {
-	s.forwardCustomer(w, r, http.MethodGet, "/me")
+	data, err := s.customerCall(r.Context(), http.MethodGet, "/me", nil)
+	if err != nil {
+		// Registration may still be retrying, so the Agent socket need not be
+		// available yet. Public seeds are read-only, never a routing-ready claim.
+		writeJSON(w, http.StatusOK, map[string]any{"device": map[string]any{}, "rule_packages": ruleseed.Catalog(), "nodes": []any{}, "rules": []any{}, "categories": []string{}, "preferences": map[string]string{}, "initialization_pending": true, "initialization_message": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
 
 func (s *Server) customerRules(w http.ResponseWriter, r *http.Request) {

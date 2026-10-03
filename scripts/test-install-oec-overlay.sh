@@ -60,6 +60,7 @@ new_fixture() {
   printf '# fixture compatibility module\n' > "$package/payload/usr/local/libexec/ty_gateway_dae_compat.py"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$package/payload/etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$package/payload/usr/local/libexec/ty-gateway-firstboot"
+  printf '#!/usr/bin/python3\n' > "$package/payload/usr/local/libexec/ty-gateway-prepare"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$package/payload/usr/local/libexec/ty-gateway-network"
   printf '# fixture module\n' > "$package/payload/usr/local/libexec/ty_gateway_lan.py"
   printf 'f /run/xtables.lock 0600 root root -\n' > "$package/payload/etc/tmpfiles.d/ty-gateway-lan.conf"

@@ -1,0 +1,1 @@
+Generated public rule seeds only. Refresh with `go run ./cmd/rule-seed -input-dir <validated cloud rule-packages> -output-dir internal/ruleseed/data` before building a signed release. No device state, subscriptions, FRP settings or credentials belong here.

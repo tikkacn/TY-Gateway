@@ -45,6 +45,7 @@ ALLOWED_FILES = frozenset({
     "payload/usr/local/libexec/ty-gateway-update", "payload/usr/local/libexec/ty-gateway-update-service",
     "payload/usr/local/libexec/ty-gateway-dae-helper",
     "payload/usr/local/libexec/ty-gateway-dae-preflight", "payload/usr/local/libexec/ty-gateway-firstboot",
+    "payload/usr/local/libexec/ty-gateway-prepare",
     "payload/usr/local/libexec/ty_gateway_dae_compat.py",
     "payload/usr/local/libexec/ty-gateway-network", "payload/usr/local/libexec/ty_gateway_lan.py",
     "payload/etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding",

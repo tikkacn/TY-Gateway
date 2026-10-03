@@ -71,6 +71,7 @@ Copy-Payload 'etc\systemd\system\ty-gateway-update-service.service' 'etc\systemd
 Copy-Payload 'etc\systemd\system\dae.service.d\ty-gateway-forwarding.conf' 'etc\systemd\system\dae.service.d\ty-gateway-forwarding.conf'
 Copy-Payload 'etc\systemd\system\ty-frpc-rescue.service' 'etc\systemd\system\ty-frpc-rescue.service'
 Copy-Payload 'usr\local\libexec\ty-gateway-firstboot' 'usr\local\libexec\ty-gateway-firstboot'
+Copy-Payload 'usr\local\libexec\ty-gateway-prepare' 'usr\local\libexec\ty-gateway-prepare'
 Copy-Payload 'usr\local\libexec\ty-gateway-network' 'usr\local\libexec\ty-gateway-network'
 Copy-Payload 'usr\local\libexec\ty-gateway-dae-preflight' 'usr\local\libexec\ty-gateway-dae-preflight'
 Copy-Payload 'usr\local\libexec\ty_gateway_dae_compat.py' 'usr\local\libexec\ty_gateway_dae_compat.py'

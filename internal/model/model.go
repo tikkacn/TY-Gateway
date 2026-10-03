@@ -189,6 +189,7 @@ type CompiledRule struct {
 }
 
 type DeviceConfig struct {
+	RuleSeedVersion        string            `json:"rule_seed_version,omitempty"`
 	RulePackageVersion     string            `json:"rule_package_version,omitempty"`
 	Device                 CustomerDevice    `json:"device"`
 	Profile                string            `json:"profile"`

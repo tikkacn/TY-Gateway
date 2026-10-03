@@ -52,6 +52,7 @@ software_paths=(
   /usr/local/libexec/ty_gateway_dae_compat.py
   /etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding
   /usr/local/libexec/ty-gateway-firstboot
+  /usr/local/libexec/ty-gateway-prepare
   /usr/local/libexec/ty-gateway-network
   /usr/local/libexec/ty_gateway_lan.py
   /etc/tmpfiles.d/ty-gateway-lan.conf

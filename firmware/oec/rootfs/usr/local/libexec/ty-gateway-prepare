@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""Wait for the running Agent to prepare this device; never read credentials."""
+import argparse
+import json
+import socket
+import time
+
+SOCKET = "/run/ty-gateway-agent/control.sock"
+
+
+def request(action):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(5)
+        connection.connect(SOCKET)
+        connection.sendall(json.dumps({"action": action}).encode() + b"\n")
+        with connection.makefile("rb") as stream:
+            data = stream.readline(4097)
+        if len(data) > 4096:
+            raise ValueError("Agent preparation response too large")
+        state = json.loads(data)
+        if not isinstance(state, dict) or not isinstance(state.get("prepared"), bool):
+            raise ValueError("Agent preparation response invalid")
+        return state
+
+
+def wait(timeout, call=request, clock=time.monotonic, pause=time.sleep, report=print):
+    deadline = clock() + timeout
+    requested = False
+    previous = None
+    while clock() < deadline:
+        try:
+            state = call("onboarding" if requested else "prepare")
+            requested = True
+        except (OSError, ValueError):
+            state = None
+        if state and state.get("prepared") is True and state.get("enrolled") is True and state.get("rules_cached") is True and state.get("nodes_validated") is True and isinstance(state.get("node_count"), int) and state["node_count"] > 0:
+            report("Initialization ready: rules saved locally and DAE verified %d nodes. Proxy switch and network settings were not changed." % state["node_count"])
+            if str(state.get("frp_state", "")).startswith("configured:"):
+                report("Automatic FRP client configured; real SSH tunnel reachability must still be checked in the administrator console.")
+            else:
+                report("Automatic FRP is pending; software/rule readiness is not tunnel confirmation.")
+            return 0
+        if state and state.get("blocker") == "subscription_missing" and not state.get("sync_running"):
+            report("Initialization incomplete: bind a valid subscription in the administrator console. Services remain installed and will retry; rerun this bootstrap after binding, without reinstalling files.")
+            return 3
+        phase = "agent_pending" if not state else state.get("blocker", "configuration_pending")
+        if phase != previous:
+            report("Preparing local rules and subscription nodes: " + phase, flush=True)
+            previous = phase
+        pause(min(3, max(0, deadline - clock())))
+    report("Software installed, but initialization is NOT complete within the waiting period. Agent will continue retrying. Check MAC enrollment, subscription binding and Cloud connectivity, then rerun the same bootstrap; installed files and settings will be retained.")
+    return 3
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--timeout", type=int, default=480)
+    args = parser.parse_args()
+    if not 1 <= args.timeout <= 900:
+        parser.error("timeout must be between 1 and 900 seconds")
+    raise SystemExit(wait(args.timeout))
+
+
+if __name__ == "__main__":
+    main()

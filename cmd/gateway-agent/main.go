@@ -27,9 +27,10 @@ import (
 	"tygateway/internal/identity"
 	"tygateway/internal/model"
 	"tygateway/internal/nodeprobe"
+	"tygateway/internal/ruleseed"
 )
 
-const defaultVersion = "0.8.13"
+const defaultVersion = "0.8.14"
 
 const (
 	localProxyFile = "local-proxy.json"
@@ -544,6 +545,23 @@ func (a *agent) fetchConfigWithReset(ctx context.Context, forceSubscription, rec
 	if state := a.stateValue(); config.Device.ID != state.DeviceID || (state.Serial != "" && !strings.EqualFold(config.Device.Serial, state.Serial)) {
 		return errors.New("cloud returned configuration for a different device")
 	}
+	config, err = ruleseed.Hydrate(config)
+	if err != nil {
+		// A reference/format mismatch is not permission to use stale rules.
+		// Retry once without references and require a complete cloud payload.
+		if a.logger != nil {
+			a.logger.Print("config_sync stage=seed result=mismatch; requesting full rules")
+		}
+		data, status, err = a.downloadConfigWithSeeds(ctx, false)
+		if err != nil {
+			return err
+		}
+		state := a.stateValue()
+		config = model.DeviceConfig{}
+		if status/100 != 2 || json.Unmarshal(data, &config) != nil || config.RuleSeedVersion != "" || config.Device.ID != state.DeviceID || config.ServerTime.IsZero() || (state.Serial != "" && !strings.EqualFold(config.Device.Serial, state.Serial)) {
+			return errors.New("complete cloud rule configuration is unavailable")
+		}
+	}
 	if a.autoFRP != nil {
 		a.reconcileAutoFRP(ctx, config.AutoFRP)
 	}
@@ -555,6 +573,11 @@ func (a *agent) fetchConfigWithReset(ctx context.Context, forceSubscription, rec
 	cloudCustomer, err := a.fetchCloudCustomerState(ctx, config)
 	if err != nil {
 		return err
+	}
+	// Public catalog can be shown before subscription parsing/DAE finishes.
+	// This cache is deliberately not an applied policy or a node inventory.
+	if err := a.saveRuleCatalog(config.Profile, cloudCustomer); err != nil && a.logger != nil {
+		a.logger.Print("public rule catalog cache could not be saved")
 	}
 	a.configMu.Lock()
 	err = a.applyDownloadedConfig(ctx, config, cloudCustomer, forceSubscription, recheckIPv4, resetLocalPreferences, resetCommandIDs...)
@@ -824,25 +847,33 @@ func (a *agent) reconcileAutoFRP(ctx context.Context, config *model.AutoFRPConfi
 	if err := a.autoFRP.Apply(ctx, a.stateValue(), config); err != nil {
 		// FRPC verifier output may contain generated configuration fields. Never
 		// copy it into the journal, where device-derived credentials could leak.
+		a.stateMu.Lock()
 		a.autoFRPState = "apply-failed"
+		a.stateMu.Unlock()
 		if a.logger != nil {
 			a.logger.Printf("automatic FRP reconciliation deferred")
 		}
 		return
 	}
 	if config == nil {
-		if a.autoFRPState != "cloud-config-absent" && a.logger != nil {
+		a.stateMu.Lock()
+		previous := a.autoFRPState
+		a.autoFRPState = "cloud-config-absent"
+		a.stateMu.Unlock()
+		if previous != "cloud-config-absent" && a.logger != nil {
 			a.logger.Printf("automatic FRP config absent from Cloud; client stopped while waiting for per-device authorization")
 		}
-		a.autoFRPState = "cloud-config-absent"
 		return
 	}
 	encoded, _ := json.Marshal(config)
 	configKey := fmt.Sprintf("configured:%x", sha256.Sum256(encoded))
-	if a.autoFRPState != configKey && a.logger != nil {
+	a.stateMu.Lock()
+	previous := a.autoFRPState
+	a.autoFRPState = configKey
+	a.stateMu.Unlock()
+	if previous != configKey && a.logger != nil {
 		a.logger.Printf("automatic FRP client process started; tunnel reachability remains unverified; control_port=%d remote_port=%d", config.ControlPort, config.RemotePort)
 	}
-	a.autoFRPState = configKey
 }
 
 func (a *agent) subscriptionRefreshDue() bool {
@@ -1196,6 +1227,11 @@ func (a *agent) serveLocalControlConn(conn net.Conn) {
 		return
 	}
 	switch request.Action {
+	case "prepare":
+		a.startConfigSync(false, false)
+		_ = json.NewEncoder(conn).Encode(a.onboardingStatus())
+	case "onboarding":
+		_ = json.NewEncoder(conn).Encode(a.onboardingStatus())
 	case "status":
 		_ = json.NewEncoder(conn).Encode(a.localControlStatus())
 	case "set":
@@ -1241,6 +1277,9 @@ func (a *agent) localCustomerRequest(ctx context.Context, request localControlRe
 	if method == http.MethodGet && (path == "/me" || path == "/rules") {
 		snapshot, err := a.loadAppliedSnapshot()
 		if err != nil {
+			if path == "/me" {
+				return localControlResponse{Data: a.initialCustomerCatalog()}
+			}
 			return localControlResponse{Error: "本机尚无已验证的规则和节点，请先完成同步。"}
 		}
 		if path == "/me" {
@@ -1484,17 +1523,25 @@ func (a *agent) pollCommands(ctx context.Context) error {
 }
 
 func (a *agent) signedRequest(ctx context.Context, method, path string, body []byte) ([]byte, int, error) {
+	return a.signedRequestWithSeeds(ctx, method, path, body, true)
+}
+
+func (a *agent) signedRequestWithSeeds(ctx context.Context, method, path string, body []byte, useSeeds bool) ([]byte, int, error) {
 	state := a.stateValue()
 	timestamp := time.Now().Unix()
 	nonce := fmt.Sprintf("%d-%d", timestamp, time.Now().UnixNano())
 	key := auth.SecretHash(state.DeviceSecret)
 	signature := auth.Sign(method, path, body, timestamp, nonce, key)
-	return a.request(ctx, method, path, body, map[string]string{
+	headers := map[string]string{
 		"X-TY-Device":    state.DeviceID,
 		"X-TY-Timestamp": strconv.FormatInt(timestamp, 10),
 		"X-TY-Nonce":     nonce,
 		"X-TY-Signature": signature,
-	})
+	}
+	if useSeeds && method == http.MethodGet && strings.HasSuffix(path, "/config") {
+		headers["X-TY-Rule-Seeds"] = ruleSeedAdvertisement()
+	}
+	return a.request(ctx, method, path, body, headers)
 }
 
 func cloudRequestStage(method, path string) string {

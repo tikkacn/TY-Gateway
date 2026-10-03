@@ -2,22 +2,34 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"tygateway/internal/ruleseed"
 )
 
 const configDownloadTimeout = 90 * time.Second
 
+func ruleSeedAdvertisement() string {
+	data, _ := json.Marshal(ruleseed.Versions())
+	return string(data)
+}
+
 // Only idempotent config GETs retry, and only on a network timeout. Each
 // attempt is freshly signed; auth, payload and DAE errors never retry here.
 func (a *agent) downloadConfig(ctx context.Context) ([]byte, int, error) {
+	return a.downloadConfigWithSeeds(ctx, true)
+}
+
+func (a *agent) downloadConfigWithSeeds(ctx context.Context, useSeeds bool) ([]byte, int, error) {
 	path := "/api/v1/device/" + url.PathEscape(a.stateValue().DeviceID) + "/config"
 	for attempt := 1; ; attempt++ {
-		data, status, err := a.signedRequest(ctx, http.MethodGet, path, nil)
+		data, status, err := a.signedRequestWithSeeds(ctx, http.MethodGet, path, nil, useSeeds)
 		if status == http.StatusUnauthorized || status == http.StatusForbidden {
 			return nil, status, nil // auth rejection wins even if its body timed out
 		}

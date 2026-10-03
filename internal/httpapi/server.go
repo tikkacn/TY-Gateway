@@ -34,6 +34,7 @@ import (
 	"tygateway/internal/model"
 	"tygateway/internal/providers"
 	"tygateway/internal/rules"
+	"tygateway/internal/ruleseed"
 	"tygateway/internal/store"
 	"tygateway/internal/subscription"
 )
@@ -816,7 +817,12 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request, id string) {
 	if autoFRPApproved {
 		autoFRP = s.autoFRPConfigForDevice(d)
 	}
-	writeJSON(w, 200, model.DeviceConfig{RulePackageVersion: d.RulePackageVersion, Device: d.CustomerView(), Profile: d.Profile, ConfigVersion: d.ConfigVersion, Rules: compiled, BaseRules: base, Preferences: prefs, ValidUntil: d.CustomerOverrideUntil, ServerTime: time.Now().UTC(), Nodes: nodes, Rescue: s.rescueConfigForDevice(d), AutoFRP: autoFRP, DaeSubscriptionManaged: true, DaeSubscription: daeSubscription})
+	config := model.DeviceConfig{RulePackageVersion: d.RulePackageVersion, Device: d.CustomerView(), Profile: d.Profile, ConfigVersion: d.ConfigVersion, Rules: compiled, BaseRules: base, Preferences: prefs, ValidUntil: d.CustomerOverrideUntil, ServerTime: time.Now().UTC(), Nodes: nodes, Rescue: s.rescueConfigForDevice(d), AutoFRP: autoFRP, DaeSubscriptionManaged: true, DaeSubscription: daeSubscription}
+	var seedVersions map[string]string
+	if advertised := r.Header.Get("X-TY-Rule-Seeds"); len(advertised) <= 1024 && json.Unmarshal([]byte(advertised), &seedVersions) == nil {
+		config = ruleseed.Compact(config, seedVersions)
+	}
+	writeJSON(w, 200, config)
 }
 func (s *Server) commands(w http.ResponseWriter, r *http.Request, id string) {
 	cs, err := s.Store.PollCommands(r.Context(), id)

@@ -205,7 +205,7 @@
     const packageUse=el('button',{type:'button',className:'btn'},'使用此方案'),packageUpdate=el('button',{type:'button',className:'btn secondary'},'检查并更新规则'),packageRefresh=el('button',{type:'button',className:'btn secondary'},'刷新更新状态'),packageStatus=el('div',{className:'notice',id:'package-status',role:'status'});
     const packageActions=el('div',{className:'actions'});packageActions.append(packageUse,packageUpdate,packageRefresh);packages.append(packageLabel,packageActions,packageStatus);
     function renderPackage(){const chosen=packageSelect.value;packageSelect.replaceChildren();for(const p of (state.rule_packages||[]))addOption(packageSelect,p.id,p.name+(p.available?'':'（尚未就绪）'));packageSelect.value=chosen||state.device?.profile||'';if(!packageSelect.value)packageSelect.selectedIndex=0;describePackage();}
-    function describePackage(){const p=(state?.rule_packages||[]).find(p=>p.id===packageSelect.value);packageUse.disabled=!p?.available;packageStatus.textContent='当前方案：'+((state?.rule_packages||[]).find(p=>p.id===state?.device?.profile)?.name||'旧版测试规则')+'。'+(p?.available?'云端版本：'+p.version.slice(0,12)+'；更新时间：'+new Date(p.published_at).toLocaleString()+'。':'该方案尚无通过校验的版本。')+(p?.update?.state==='failed'?' 最近更新失败，保留旧版：'+p.update.error:'')+' 选择后由设备拉取并验证，云端发布不代表设备已应用。';}
+    function describePackage(){const p=(state?.rule_packages||[]).find(p=>p.id===packageSelect.value);packageUse.disabled=!p?.available||!state?.device?.id;packageStatus.textContent='当前方案：'+((state?.rule_packages||[]).find(p=>p.id===state?.device?.profile)?.name||(state?.initialization_pending?'初始化待完成':'旧版测试规则'))+'。'+(p?.available?(p.origin==='bundled'?'安装包预置版本：':'云端版本：')+p.version.slice(0,12)+'；更新时间：'+new Date(p.published_at).toLocaleString()+'。':'该方案尚无通过校验的版本。')+(p?.update?.state==='failed'?' 最近更新失败，保留旧版：'+p.update.error:'')+' 选择后由设备拉取并验证，列表可见不代表代理已准备好。';}
     packageSelect.addEventListener('change',describePackage);
     async function packageOperation(operation){packageUse.disabled=true;packageUpdate.disabled=true;try{const data=await api('/rule-package','POST',{operation,profile:packageSelect.value});await refresh();packageStatus.textContent=data.message}catch(e){packageStatus.textContent=e.message}finally{packageUpdate.disabled=false;const p=(state?.rule_packages||[]).find(p=>p.id===packageSelect.value);packageUse.disabled=!p?.available}}
     packageUse.addEventListener('click',()=>packageOperation('select'));packageUpdate.addEventListener('click',()=>packageOperation('update'));packageRefresh.addEventListener('click',refresh);
@@ -221,7 +221,7 @@
     async function refresh(){
       if(loading||app.classList.contains('hidden'))return;
       loading=true;retry.disabled=true;unavailable('正在加载…');
-      try{state=await api('/me');render();sync.textContent=(state.nodes||[]).length?'规则和本机 DAE 已验证的候选节点已加载；实际出口需以运行观测为准。':'暂无本机已验证节点，请先确认订阅同步状态。';sync.className='notice';retry.classList.add('hidden')}
+      try{state=await api('/me');render();if(state.initialization_pending){unavailable('首次初始化尚未完成，等待本机 DAE 验证节点。');sync.textContent=state.initialization_message||'规则方案已从本地加载；节点和配置仍在准备，尚未开启代理。';sync.className='notice warn';setTimeout(refresh,5000)}else{sync.textContent=(state.nodes||[]).length?'规则和本机 DAE 已验证的候选节点已加载；实际出口需以运行观测为准。':'暂无本机已验证节点，请先确认订阅同步状态。';sync.className='notice'}retry.classList.add('hidden')}
       catch(e){state=null;unavailable('加载失败，请点击下方重试');sync.textContent=e.message;sync.className='notice warn';retry.classList.remove('hidden')}
       finally{loading=false;retry.disabled=false}
     }

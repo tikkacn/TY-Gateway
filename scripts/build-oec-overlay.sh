@@ -37,6 +37,7 @@ install -m 0755 -- firmware/oec/rootfs/usr/local/libexec/ty-gateway-dae-prefligh
 install -m 0644 -- firmware/oec/rootfs/usr/local/libexec/ty_gateway_dae_compat.py "$out_dir/payload/usr/local/libexec/ty_gateway_dae_compat.py"
 install -m 0755 -- firmware/oec/rootfs/etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding "$out_dir/payload/etc/NetworkManager/dispatcher.d/90-ty-gateway-dae-forwarding"
 install -m 0755 -- firmware/oec/rootfs/usr/local/libexec/ty-gateway-firstboot "$out_dir/payload/usr/local/libexec/ty-gateway-firstboot"
+install -m 0755 -- firmware/oec/rootfs/usr/local/libexec/ty-gateway-prepare "$out_dir/payload/usr/local/libexec/ty-gateway-prepare"
 install -m 0755 -- firmware/oec/rootfs/usr/local/libexec/ty-gateway-network "$out_dir/payload/usr/local/libexec/ty-gateway-network"
 install -m 0755 -- scripts/ty-gateway-update.py "$out_dir/payload/usr/local/libexec/ty-gateway-update"
 install -m 0755 -- scripts/ty-gateway-update-service.py "$out_dir/payload/usr/local/libexec/ty-gateway-update-service"

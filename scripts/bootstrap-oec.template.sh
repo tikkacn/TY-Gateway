@@ -16,17 +16,27 @@ dae_version='2.1.1'
 dae_sha256='e7ecc9600df20163e90b9cab018f522e090996993c971ad0c271fb5b33c3a387'
 dae_url="https://github.com/daeuniverse/dae/releases/download/v${dae_version}/dae-linux-arm64.deb"
 package_dir=''
+prepare_timeout=480
 
 usage() {
-  echo 'usage: bootstrap-oec.sh [--package-dir DIRECTORY]' >&2
+  echo 'usage: bootstrap-oec.sh [--package-dir DIRECTORY] [--prepare-timeout SECONDS]' >&2
   exit 2
 }
 while (($#)); do
   case "$1" in
     --package-dir) (($# >= 2)) || usage; package_dir="$2"; shift 2 ;;
+    --prepare-timeout) (($# >= 2)) || usage; prepare_timeout="$2"; shift 2 ;;
     *) usage ;;
   esac
 done
+[[ "$prepare_timeout" =~ ^[1-9][0-9]{0,2}$ ]] && (( prepare_timeout <= 900 )) || usage
+
+prepare_device() {
+  [[ -f /usr/local/libexec/ty-gateway-prepare ]] || {
+    echo 'Preparation helper missing; upgrade with the signed software updater.' >&2; return 3;
+  }
+  python3 /usr/local/libexec/ty-gateway-prepare --timeout "$prepare_timeout"
+}
 
 [[ "$channel" == stable || "$channel" == pilot ]] || { echo 'Invalid embedded release channel.' >&2; exit 2; }
 [[ "$(id -u)" == 0 ]] || { echo 'Run as root.' >&2; exit 2; }
@@ -77,8 +87,9 @@ if [[ "$bootstrap_state" == complete ]]; then
   [[ -x /usr/local/bin/ty-gateway-agent ]] || {
     echo 'Bootstrap was marked complete but its Agent is missing; use the signed software repair process.' >&2; exit 2;
   }
-  echo 'TY Gateway software installation already completed; no files or services were changed.'
+  echo 'TY Gateway software installation already completed; retaining installed software and retrying device preparation only.'
   report_onboarding_status
+  prepare_device
   exit 0
 fi
 if [[ -z "$bootstrap_state" ]] && { [[ -e /usr/local/bin/ty-gateway-agent ]] || [[ -e /var/lib/ty-gateway/credentials.json ]]; }; then
@@ -398,3 +409,6 @@ if ((${#kernel_runtime_missing[@]})); then
   echo "DAE runtime prerequisites not detected: ${kernel_runtime_missing[*]}. The proxy switch must remain off until these are resolved."
 fi
 echo 'Next: open http://<OEC-LAN-IP>:8088, set the local password, and confirm Cloud enrollment before changing network settings.'
+# Software-complete is separate from device-ready. Re-running a completed
+# bootstrap retries preparation only; no second Agent or reset is installed.
+prepare_device
