@@ -30,7 +30,7 @@ import (
 	"tygateway/internal/ruleseed"
 )
 
-const defaultVersion = "0.8.14"
+const defaultVersion = "1.0.0"
 
 const (
 	localProxyFile = "local-proxy.json"

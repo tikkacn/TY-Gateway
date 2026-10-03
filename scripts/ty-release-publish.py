@@ -28,6 +28,8 @@ ARCHIVE_NAME_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 MAX_EXPANDED = 1 << 30
 MAX_ENTRIES = 2048
 PINNED_PUBLIC_KEY_SHA256 = "78756e159ec392b52b146b049db79b0d94848ee10359841f58877aad192f1a3f"
+DAE_NAME = "dae-linux-arm64-v2.1.1.deb"
+DAE_SHA256 = "e7ecc9600df20163e90b9cab018f522e090996993c971ad0c271fb5b33c3a387"
 PRIVATE_MARKERS = (
     b"-----BEGIN PRIVATE KEY-----", b"-----BEGIN RSA PRIVATE KEY-----",
     b"-----BEGIN EC PRIVATE KEY-----", b"-----BEGIN OPENSSH PRIVATE KEY-----",
@@ -278,7 +280,13 @@ def version_order(value):
     return tuple(int(part) for part in value.split("."))
 
 
-def publish(s3, artifact, bundle_bytes, manifest, bootstrap_script=None):
+def publish(s3, artifact, bundle_bytes, manifest, bootstrap_script=None, dae_package=None):
+    if dae_package is not None:
+        dae_package = pathlib.Path(dae_package)
+        if (not dae_package.is_file() or dae_package.is_symlink() or
+                dae_package.name != DAE_NAME or
+                hashlib.sha256(dae_package.read_bytes()).hexdigest() != DAE_SHA256):
+            raise ValueError("DAE mirror package does not match the pinned official release")
     artifact_key = manifest["artifact"]
     # The signed channel is inside the manifest. Pilot and stable promotions
     # therefore need separate immutable objects even when sharing one archive.
@@ -334,7 +342,17 @@ def publish(s3, artifact, bundle_bytes, manifest, bootstrap_script=None):
             )
         wait_for_public(bootstrap_key, bootstrap_hash, len(bootstrap_script))
 
-    # Never advance the mutable channel pointer until both immutable objects
+    if dae_package is not None:
+        dae_key = f"releases/{manifest['version']}/{DAE_NAME}"
+        if not object_exists(s3, dae_key):
+            s3.upload_file(
+                str(dae_package), BUCKET, dae_key,
+                ExtraArgs={"ContentType": "application/vnd.debian.binary-package",
+                           "CacheControl": "public, max-age=31536000, immutable"},
+            )
+        wait_for_public(dae_key, DAE_SHA256, dae_package.stat().st_size)
+
+    # Never advance the mutable channel pointer until all immutable objects
     # have been uploaded and read back through the real public domain.
     s3.put_object(
         Bucket=BUCKET, Key=channel_key, Body=bundle_bytes,
@@ -351,6 +369,8 @@ def main(argv=None):
     parser.add_argument("--verifier", required=True, type=pathlib.Path)
     parser.add_argument("--bootstrap-script", type=pathlib.Path, required=True,
                         help="generated, version-pinned bootstrap-oec.sh to mirror alongside the verifier")
+    parser.add_argument("--dae-package", type=pathlib.Path,
+                        help="pinned official ARM64 DAE package; required for stable first-install fallback")
     args = parser.parse_args(argv)
     for name in ("TY_R2_ACCESS_KEY_ID", "TY_R2_SECRET_ACCESS_KEY", "TY_R2_ENDPOINT"):
         if not os.environ.get(name):
@@ -360,6 +380,8 @@ def main(argv=None):
     if hashlib.sha256(args.public_key.read_bytes()).hexdigest() != PINNED_PUBLIC_KEY_SHA256:
         parser.error("release public key does not match the pinned TY Gateway key")
     bundle, manifest = read_bundle(args.bundle)
+    if manifest["channel"] == "stable" and args.dae_package is None:
+        parser.error("stable publication requires --dae-package for complete first-install fallback")
     if not args.artifact.is_file() or not args.public_key.is_file():
         parser.error("archive or public key is missing")
     try:
@@ -383,7 +405,7 @@ def main(argv=None):
     fetch_binary = bootstrap_verifier_bytes(args.artifact)
     if fetch_binary is None or bootstrap_bytes != render_bootstrap(manifest, args.public_key.read_bytes(), fetch_binary):
         parser.error("bootstrap script does not match the pinned release and signed verifier")
-    channel_key = publish(s3, args.artifact, bundle, manifest, bootstrap_bytes)
+    channel_key = publish(s3, args.artifact, bundle, manifest, bootstrap_bytes, args.dae_package)
     print(f"published {manifest['version']} to {BUCKET}/{channel_key}")
 
 

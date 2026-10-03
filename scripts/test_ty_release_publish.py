@@ -71,6 +71,8 @@ class PublisherTests(unittest.TestCase):
         stable = publisher.render_bootstrap(dict(self.manifest, channel="stable"), b"public-key", b"verifier")
         self.assertIn(b"https://oec.uutec.net/releases/0.7.0", stable)
         self.assertIn(b"https://oec.uutec.net/bootstrap/0.7.0/ty-release-fetch-linux-arm64", stable)
+        self.assertIn(b'download_exact "$dae_url" "$dae_r2_url" "$dae_deb"', stable)
+        self.assertIn(b'dae_r2_url="$r2_release_url/dae-linux-arm64-v${dae_version}.deb"', stable)
 
     def test_local_bootstrap_preparer_defaults_to_github_only_and_reserves_r2_for_stable(self):
         template = bootstrap_preparer.TEMPLATE.read_text(encoding="utf-8")
@@ -103,6 +105,39 @@ class PublisherTests(unittest.TestCase):
         with mock.patch.object(publisher, "wait_for_public", side_effect=ValueError("bad CDN readback")):
             with self.assertRaises(ValueError):
                 publisher.publish(s3, self.artifact, self.bundle, self.manifest)
+        self.assertNotIn("channels/pilot/linux-arm64/latest.json", s3.objects)
+
+    def test_dae_mirror_is_pinned_and_read_back_before_channel(self):
+        s3 = FakeS3()
+        dae = pathlib.Path(self.tmp.name, publisher.DAE_NAME)
+        dae.write_bytes(b"official-deb")
+        digest = hashlib.sha256(dae.read_bytes()).hexdigest()
+        with mock.patch.object(publisher, "DAE_SHA256", digest), mock.patch.object(publisher, "wait_for_public") as check:
+            publisher.publish(s3, self.artifact, self.bundle, self.manifest, dae_package=dae)
+        key = "releases/0.7.0/" + publisher.DAE_NAME
+        self.assertEqual(s3.objects[key], b"official-deb")
+        check.assert_called_with(key, digest, len(b"official-deb"))
+        self.assertEqual(s3.calls[-1], ("put", publisher.BUCKET, "channels/pilot/linux-arm64/latest.json"))
+
+    def test_invalid_dae_mirror_never_uploads_anything(self):
+        s3 = FakeS3()
+        dae = pathlib.Path(self.tmp.name, publisher.DAE_NAME)
+        dae.write_bytes(b"wrong-deb")
+        with self.assertRaisesRegex(ValueError, "pinned official"):
+            publisher.publish(s3, self.artifact, self.bundle, self.manifest, dae_package=dae)
+        self.assertEqual(s3.calls, [])
+
+    def test_dae_readback_failure_keeps_previous_channel(self):
+        s3 = FakeS3()
+        dae = pathlib.Path(self.tmp.name, publisher.DAE_NAME)
+        dae.write_bytes(b"official-deb")
+        digest = hashlib.sha256(dae.read_bytes()).hexdigest()
+        def readback(key, *args):
+            if key.endswith(".deb"):
+                raise ValueError("DAE readback mismatch")
+        with mock.patch.object(publisher, "DAE_SHA256", digest), mock.patch.object(publisher, "wait_for_public", side_effect=readback):
+            with self.assertRaisesRegex(ValueError, "DAE readback"):
+                publisher.publish(s3, self.artifact, self.bundle, self.manifest, dae_package=dae)
         self.assertNotIn("channels/pilot/linux-arm64/latest.json", s3.objects)
 
     def test_rejects_downgrade(self):

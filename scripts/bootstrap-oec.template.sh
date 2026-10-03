@@ -15,6 +15,10 @@ r2_fetch_url='@R2_FETCH_URL@'
 dae_version='2.1.1'
 dae_sha256='e7ecc9600df20163e90b9cab018f522e090996993c971ad0c271fb5b33c3a387'
 dae_url="https://github.com/daeuniverse/dae/releases/download/v${dae_version}/dae-linux-arm64.deb"
+dae_r2_url=''
+if [[ "$channel" == stable && -n "$r2_release_url" ]]; then
+  dae_r2_url="$r2_release_url/dae-linux-arm64-v${dae_version}.deb"
+fi
 package_dir=''
 prepare_timeout=480
 
@@ -259,8 +263,7 @@ PY
 # Extract its files without running the upstream post-install script, which may
 # restart a service. The TY Gateway proxy switch remains off after a fresh install.
 if [[ -z "$package_dir" ]]; then
-  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
-    --connect-timeout 10 --max-time 240 "$dae_url" -o "$dae_deb"
+  download_exact "$dae_url" "$dae_r2_url" "$dae_deb"
 fi
 printf '%s  %s\n' "$dae_sha256" "$dae_deb" | sha256sum --check --status || {
   echo 'Official DAE package hash mismatch; refusing installation.' >&2; exit 2;
